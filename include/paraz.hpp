@@ -36,7 +36,7 @@
 #include <cstddef>
 #include <vector>
 #include <string>
-#include <memory>
+#include <exception>
 
 #include "libdeflate.h"
 
@@ -60,12 +60,14 @@ private:
 
 public:
     ParallelCompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 1000000, size_t _out_buffer_size = 1000000) {
-	// TODO check that n_threads > 0
-	this->n_threads = _n_threads;
-	// TODO check that this is in range [0, 12]
+	this->n_threads = (_n_threads > 0 ? _n_threads : omp_get_max_threads());
+
+	if (_compression_level > 12) {
+	    throw std::invalid_argument("only levels 0..12 are allowed.");
+	}
 	this->compression_level = _compression_level;
 
-	// TODO check that ranges are valid
+	// TODO check which ranges work and then check that they're valid
 	this->in_buffer_size = _in_buffer_size;
 	this->out_buffer_size = _out_buffer_size;
 

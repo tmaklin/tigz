@@ -45,7 +45,7 @@ bool CmdOptionPresent(char **begin, char **end, const std::string &option) {
 
 bool parse_args(int argc, char* argv[], cxxargs::Arguments &args) {
     args.add_long_argument<size_t>("level", "\tCompression level (default: 6).", 6);
-    args.add_long_argument<size_t>("threads", "Number of threads to use (default: 1).", 1);
+    args.add_long_argument<size_t>("threads", "Number of threads to use (default: 1), 0 means use all available.", 1);
     args.add_long_argument<bool>("help", "Print this message and quit.", false);
     if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h")) {
 	std::cerr << "\n" + args.help() << '\n' << '\n';
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     }
 
     size_t n_threads = args.value<size_t>("threads");
-    omp_set_num_threads(n_threads);
+    omp_set_num_threads(n_threads > 0 ? n_threads : omp_get_max_threads());
 
     paraz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 
