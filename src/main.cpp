@@ -34,58 +34,19 @@
 #include <fstream>
 #include <iostream>
 
-#include "external/libdeflate/libdeflate.h"
-
 #include "paraz.hpp"
 
 int main(int argc, char* argv[]) {
-
-    int n_threads = 1;
+    size_t n_threads = 4;
     omp_set_num_threads(n_threads);
-    int nthreads = omp_get_num_threads();
 
     std::ifstream infile("test_data_small.txt");
     std::ostream outfile(std::cout.rdbuf());
 
-    uint32_t in_buffer_size = 1000000;
-    uint32_t out_buffer_size = 1000000;
-    char inbuffer[n_threads][in_buffer_size];
-    char outbuffer[n_threads][out_buffer_size];
-    libdeflate_compressor *compressor[n_threads];
-    bool infile_was_read[n_threads];
-    for (int i = 0; i < n_threads; ++i) {
-	compressor[i] = libdeflate_alloc_compressor(7);
-	infile_was_read[i] = false;
-    }
-
-    while (infile.good()) {
-	for (int i = 0; i < n_threads && (infile.good()); ++i) {
-	    infile.read(inbuffer[i], in_buffer_size);
-	    infile_was_read[i] = true;
-	}
-#pragma omp parallel for ordered schedule(static, 1)
-	for (int i = 0; i < n_threads; ++i) {
-	    if (infile_was_read[i]) {
-		int out_nbytes = libdeflate_gzip_compress(compressor[i],
-							  inbuffer[i],
-							  in_buffer_size,
-							  outbuffer[i],
-							  out_buffer_size);
-#pragma omp ordered
-		{
-		    std::cerr << out_nbytes << std::endl;
-		    outfile.write(outbuffer[i], out_nbytes);
-		}
-	    }
-	    infile_was_read[i] = false;
-	}
-    }
-    // There's some extra data at the end but this works now otherwise
+    paraz::ParallelCompressor cmp(n_threads, 12);
+    cmp.compress_stream(&infile, &outfile);
 
     infile.close();
 
-    for (int i = 0; i < n_threads; ++i ) {
-	libdeflate_free_compressor(compressor[i]);
-    }
     return 1;
 }
