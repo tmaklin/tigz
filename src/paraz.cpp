@@ -28,25 +28,57 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-#include <stdio.h>
 #include <omp.h>
 
-#include <fstream>
+#include <algorithm>
 #include <iostream>
+#include <exception>
 
 #include "paraz.hpp"
+#include "cxxargs.hpp"
+
+#include "paraz_version.h"
+
+bool CmdOptionPresent(char **begin, char **end, const std::string &option) {
+    return (std::find(begin, end, option) != end);
+}
+
+bool parse_args(int argc, char* argv[], cxxargs::Arguments &args) {
+    args.add_long_argument<size_t>("level", "\tCompression level (default: 6).", 6);
+    args.add_long_argument<size_t>("threads", "Number of threads to use (default: 1).", 1);
+    args.add_long_argument<bool>("help", "Print this message and quit.", false);
+    if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h")) {
+	std::cerr << "\n" + args.help() << '\n' << '\n';
+	return true;
+    } else {
+	args.parse(argc, argv);
+	return false;
+    }
+}
 
 int main(int argc, char* argv[]) {
-    size_t n_threads = 4;
+    cxxargs::Arguments args("paraz-" + std::string(PARAZ_BUILD_VERSION), "Usage: paraz [options] [files]\nCompress files in parallel using libdeflate.\n");
+    try {
+	bool quit = parse_args(argc, argv, args);
+	if (quit) {
+	    return 0;
+	}
+    } catch (std::exception &e) {
+	std::cerr << "Parsing arguments failed:\n"
+		  << std::string("\t") + std::string(e.what()) + "\n"
+		  << "\trun alignment-writer with the --help option for usage instructions.\n";
+	std::cerr << std::endl;
+	return 1;
+    }
+
+    size_t n_threads = args.value<size_t>("threads");
     omp_set_num_threads(n_threads);
 
-    std::ifstream infile("test_data_small.txt");
-    std::ostream outfile(std::cout.rdbuf());
+    paraz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 
-    paraz::ParallelCompressor cmp(n_threads, 12);
-    cmp.compress_stream(&infile, &outfile);
+    // TODO implement reading files from positional arguments
 
-    infile.close();
+    cmp.compress_stream(&std::cin, &std::cout);
 
-    return 1;
+    return 0;
 }
