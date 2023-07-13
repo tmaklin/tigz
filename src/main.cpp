@@ -31,36 +31,41 @@
 #include <stdio.h>
 #include <omp.h>
 
+#include <fstream>
+#include <iostream>
+
 #include "external/libdeflate/libdeflate.h"
+
+#include "paraz.hpp"
 
 int main(int argc, char* argv[]) {
 
-    int n_threads = 4;
+    int n_threads = 1;
     omp_set_num_threads(n_threads);
     int nthreads = omp_get_num_threads();
 
-    FILE *infile = fopen("test_data_large.txt", "rb");
-    FILE *outfile = fopen("test_data_large.txt.gz", "wb");
+    std::ifstream infile("test_data_small.txt");
+    std::ostream outfile(std::cout.rdbuf());
 
-    int in_buffer_size = 1000000;
-    int out_buffer_size = 1000000;
+    uint32_t in_buffer_size = 1000000;
+    uint32_t out_buffer_size = 1000000;
     char inbuffer[n_threads][in_buffer_size];
     char outbuffer[n_threads][out_buffer_size];
-    int num_read[n_threads];
-    int total_read = 0;
     libdeflate_compressor *compressor[n_threads];
+    bool infile_was_read[n_threads];
     for (int i = 0; i < n_threads; ++i) {
-	compressor[i] = libdeflate_alloc_compressor(12);
+	compressor[i] = libdeflate_alloc_compressor(7);
+	infile_was_read[i] = false;
     }
 
-    bool first = true;
-    while (num_read[0] > 0 || first) {
-	for (int i = 0; i < n_threads && (num_read[i] > 0 || first); ++i) {
-	    num_read[i] = fread(inbuffer[i], 1, sizeof(inbuffer[i]), infile);
+    while (infile.good()) {
+	for (int i = 0; i < n_threads && (infile.good()); ++i) {
+	    infile.read(inbuffer[i], in_buffer_size);
+	    infile_was_read[i] = true;
 	}
 #pragma omp parallel for ordered schedule(static, 1)
 	for (int i = 0; i < n_threads; ++i) {
-	    if ((num_read[i] > 0 || first)) {
+	    if (infile_was_read[i]) {
 		int out_nbytes = libdeflate_gzip_compress(compressor[i],
 							  inbuffer[i],
 							  in_buffer_size,
@@ -68,16 +73,16 @@ int main(int argc, char* argv[]) {
 							  out_buffer_size);
 #pragma omp ordered
 		{
-		    fwrite(outbuffer[i], 1, out_nbytes, outfile);
+		    std::cerr << out_nbytes << std::endl;
+		    outfile.write(outbuffer[i], out_nbytes);
 		}
 	    }
+	    infile_was_read[i] = false;
 	}
-	first = false;
     }
     // There's some extra data at the end but this works now otherwise
 
-    fclose(infile);
-    fclose(outfile);
+    infile.close();
 
     for (int i = 0; i < n_threads; ++i ) {
 	libdeflate_free_compressor(compressor[i]);
