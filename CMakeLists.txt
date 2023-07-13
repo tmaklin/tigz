@@ -16,7 +16,7 @@ set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## alignment-writer executable
-add_executable(paraz ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+add_executable(paraz ${CMAKE_CURRENT_SOURCE_DIR}/src/paraz.cpp)
 
 ## Check dependencies
 find_package(OpenMP REQUIRED)
