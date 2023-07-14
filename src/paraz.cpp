@@ -28,8 +28,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-#include <omp.h>
-
 #include <algorithm>
 #include <iostream>
 #include <exception>
@@ -72,7 +70,6 @@ int main(int argc, char* argv[]) {
     }
 
     size_t n_threads = args.value<size_t>("threads");
-    omp_set_num_threads(n_threads > 0 ? n_threads : omp_get_max_threads());
 
     paraz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 

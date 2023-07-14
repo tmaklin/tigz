@@ -31,14 +31,15 @@
 #ifndef PARAZ_PARAZ_HPP
 #define PARAZ_PARAZ_HPP
 
-#include <omp.h>
-
 #include <cstddef>
 #include <vector>
 #include <string>
 #include <exception>
+#include <thread>
+#include <future>
 
 #include "libdeflate.h"
+#include "BS_thread_pool.hpp"
 
 namespace paraz {
 class ParallelCompressor {
@@ -52,6 +53,7 @@ private:
 
     // Threading
     size_t n_threads;
+    BS::thread_pool pool;
 
     // Each thread needs its own buffers and compressor
     std::vector<std::basic_string<char>> in_buffers;
@@ -60,7 +62,8 @@ private:
 
 public:
     ParallelCompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 1000000, size_t _out_buffer_size = 1000000) {
-	this->n_threads = (_n_threads > 0 ? _n_threads : omp_get_max_threads());
+	this->n_threads = (_n_threads > 0 ? _n_threads : std::thread::hardware_concurrency());
+	this->pool.reset(this->n_threads);
 
 	if (_compression_level > 12) {
 	    throw std::invalid_argument("only levels 0..12 are allowed.");
@@ -95,18 +98,21 @@ public:
 		in->read(const_cast<char*>(this->in_buffers[i].data()), this->in_buffer_size);
 		input_was_read[i] = true;
 	    }
-#pragma omp parallel for ordered schedule(static, 1)
+	    std::vector<std::future<size_t>> thread_futures(this->n_threads);
 	    for (size_t i = 0; i < this->n_threads; ++i) {
 		if (input_was_read[i]) {
-		    size_t thread_out_nbytes = libdeflate_gzip_compress(this->compressors[i],
-									this->in_buffers[i].data(),
-									this->in_buffer_size,
-									const_cast<char*>(this->out_buffers[i].data()),
-									this->out_buffer_size);
-#pragma omp ordered
-		    {
-			out->write(this->out_buffers[i].data(), thread_out_nbytes);
-		    }
+		    thread_futures[i] = this->pool.submit(libdeflate_gzip_compress,
+							  this->compressors[i],
+							  this->in_buffers[i].data(),
+							  this->in_buffer_size,
+							  const_cast<char*>(this->out_buffers[i].data()),
+							  this->out_buffer_size);
+		}
+	    }
+	    for (size_t i = 0; i < this->n_threads; ++i) {
+		if (input_was_read[i]) {
+		    size_t thread_out_nbytes = thread_futures[i].get();
+		    out->write(this->out_buffers[i].data(), thread_out_nbytes);
 		}
 		input_was_read[i] = false;
 	    }

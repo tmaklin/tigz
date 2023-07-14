@@ -11,19 +11,12 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wpedantic -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
-## Set C++11 support
-set (CMAKE_CXX_STANDARD 11)
+## Set C++17 support
+set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## alignment-writer executable
 add_executable(paraz ${CMAKE_CURRENT_SOURCE_DIR}/src/paraz.cpp)
-
-## Check dependencies
-find_package(OpenMP REQUIRED)
-target_link_libraries(paraz OpenMP::OpenMP_CXX)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_PARALLEL")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -D_GLIBCXX_PARALLEL")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -D_GLIBCXX_PARALLEL")
 
 ## Include project headers
 if (NOT DEFINED CMAKE_PARAZ_HEADERS)
@@ -75,6 +68,9 @@ else()
   set(CMAKE_CXXARGS_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/cxxargs/include)
 endif()
 include_directories(${CMAKE_CXXARGS_HEADERS})
+
+set(CMAKE_BS_THREAD_POOL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/external/thread-pool/include)
+include_directories(${CMAKE_BS_THREAD_POOL_HEADERS})
 
 ## Get version number from git tags
 find_package(Git)

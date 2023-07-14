@@ -2,7 +2,6 @@
 
 ## Dependencies
 - [libdeflate](https://github.com/ebiggers/libdeflate).
-- OpenMP.
 
 ## Compilation
 ```
