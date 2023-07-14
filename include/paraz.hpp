@@ -91,6 +91,12 @@ public:
 	}
     }
 
+    // Delete copy and move constructors & copy and move assignment operators
+    ParallelCompressor(const ParallelCompressor& other) = delete;
+    ParallelCompressor(ParallelCompressor&& other) = delete;
+    ParallelCompressor& operator=(const ParallelCompressor& other) = delete;
+    ParallelCompressor& operator=(const ParallelCompressor&& other) = delete;
+
     void compress_stream(std::istream *in, std::ostream *out) {
 	std::vector<bool> input_was_read(this->n_threads, false);
 	std::vector<bool> stream_still_good(this->n_threads, true);
