@@ -32,10 +32,10 @@
 #include <iostream>
 #include <exception>
 
-#include "paraz.hpp"
+#include "tigz.hpp"
 #include "cxxargs.hpp"
 
-#include "paraz_version.h"
+#include "tigz_version.h"
 
 bool CmdOptionPresent(char **begin, char **end, const std::string &option) {
     return (std::find(begin, end, option) != end);
@@ -55,7 +55,7 @@ bool parse_args(int argc, char* argv[], cxxargs::Arguments &args) {
 }
 
 int main(int argc, char* argv[]) {
-    cxxargs::Arguments args("paraz-" + std::string(PARAZ_BUILD_VERSION), "Usage: paraz [options] [files]\nCompress files in parallel using libdeflate.\n");
+    cxxargs::Arguments args("tigz-" + std::string(TIGZ_BUILD_VERSION), "Usage: tigz [options] [files]\nCompress files in parallel using libdeflate.\n");
     try {
 	bool quit = parse_args(argc, argv, args);
 	if (quit) {
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
 
     size_t n_threads = args.value<size_t>("threads");
 
-    paraz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
+    tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 
     // TODO implement reading files from positional arguments
 

@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.0)
-project(paraz)
+project(tigz)
 
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -23,13 +23,13 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## alignment-writer executable
-add_executable(paraz ${CMAKE_CURRENT_SOURCE_DIR}/src/paraz.cpp)
+add_executable(tigz ${CMAKE_CURRENT_SOURCE_DIR}/src/tigz.cpp)
 
 ## Include project headers
-if (NOT DEFINED CMAKE_PARAZ_HEADERS)
-  set(CMAKE_PARAZ_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}/include)
+if (NOT DEFINED CMAKE_TIGZ_HEADERS)
+  set(CMAKE_TIGZ_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}/include)
 endif()
-include_directories(${CMAKE_PARAZ_HEADERS})
+include_directories(${CMAKE_TIGZ_HEADERS})
 
 ## libdeflate
 if (DEFINED CMAKE_LIBDEFLATE_HEADERS AND DEFINED CMAKE_LIBDEFLATE_LIBRARY)
@@ -53,7 +53,7 @@ else()
   set(CMAKE_LIBDEFLATE_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate/build)
 endif()
 include_directories(${CMAKE_LIBDEFLATE_HEADERS})
-target_link_libraries(paraz deflate)
+target_link_libraries(tigz deflate)
 
 ## cxxargs
 if (DEFINED CMAKE_CXXARGS_HEADERS)
@@ -85,16 +85,16 @@ if(GIT_FOUND)
   execute_process(
     COMMAND ${GIT_EXECUTABLE} describe --tags
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    OUTPUT_VARIABLE PARAZ_BUILD_VERSION
+    OUTPUT_VARIABLE TIGZ_BUILD_VERSION
     ERROR_QUIET
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )
-  message( STATUS "paraz version: ${PARAZ_BUILD_VERSION}")
+  message( STATUS "tigz version: ${TIGZ_BUILD_VERSION}")
 else()
   message(STATUS "GIT not found, version numbering disabled")
-  set(PARAZ_BUILD_VERSION "unknown")
+  set(TIGZ_BUILD_VERSION "unknown")
 endif()
-string(TIMESTAMP PARAZ_BUILD_TIMESTAMP)
+string(TIMESTAMP TIGZ_BUILD_TIMESTAMP)
 
 ## Generate a version.h file containing build version and timestamp
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/paraz_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/paraz_version.h @ONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/tigz_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/tigz_version.h @ONLY)

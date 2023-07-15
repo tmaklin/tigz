@@ -1,0 +1,9 @@
+#ifndef TIGZ_VERSION_H
+#define TIGZ_VERSION_H
+// *DON'T MODIFY MANUALLY*, CMake automatically updates this file!
+// Defines variables containing the build version and timestamp
+
+#define TIGZ_BUILD_VERSION "@TIGZ_BUILD_VERSION@"
+#define TIGZ_BUILD_TIMESTAMP "@TIGZ_BUILD_TIMESTAMP@"
+
+#endif

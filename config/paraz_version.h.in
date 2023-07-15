@@ -1,9 +1,0 @@
-#ifndef PARAZ_VERSION_H
-#define PARAZ_VERSION_H
-// *DON'T MODIFY MANUALLY*, CMake automatically updates this file!
-// Defines variables containing the build version and timestamp
-
-#define PARAZ_BUILD_VERSION "@PARAZ_BUILD_VERSION@"
-#define PARAZ_BUILD_TIMESTAMP "@PARAZ_BUILD_TIMESTAMP@"
-
-#endif
