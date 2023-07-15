@@ -79,6 +79,9 @@ include_directories(${CMAKE_CXXARGS_HEADERS})
 set(CMAKE_BS_THREAD_POOL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/external/thread-pool/include)
 include_directories(${CMAKE_BS_THREAD_POOL_HEADERS})
 
+set(CMAKE_PUGZ_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/external/pugz/lib ${CMAKE_CURRENT_SOURCE_DIR}/external/pugz)
+include_directories(${CMAKE_PUGZ_HEADERS})
+
 ## Get version number from git tags
 find_package(Git)
 if(GIT_FOUND)

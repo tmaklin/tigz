@@ -33,6 +33,8 @@
 #include <exception>
 
 #include "tigz.hpp"
+#include "tigz_decompressor.hpp"
+
 #include "cxxargs.hpp"
 
 #include "tigz_version.h"
@@ -71,11 +73,16 @@ int main(int argc, char* argv[]) {
 
     size_t n_threads = args.value<size_t>("threads");
 
-    tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 
     // TODO implement reading files from positional arguments
 
-    cmp.compress_stream(&std::cin, &std::cout);
+    if (CmdOptionPresent(argv, argc+argv, "-d")) {
+	tigz::ParallelDecompressor cmp(n_threads, args.value<size_t>("level"));
+	cmp.decompress_stream(&std::cin, &std::cout);
+    } else {
+	tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
+	cmp.compress_stream(&std::cin, &std::cout);
+    }
 
     return 0;
 }
