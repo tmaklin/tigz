@@ -55,10 +55,6 @@ private:
     // Threading
     size_t n_threads;
 
-    // Each thread needs its own buffers and input streams
-    std::vector<std::basic_string<char>> in_buffers;
-    std::vector<pugz::InputStream> in_streams;
-
 public:
     ParallelDecompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 1048576, size_t _out_buffer_size = 1048576) {
 	this->n_threads = 1; // TODO handle the multipart compatibility
@@ -93,74 +89,43 @@ public:
 	threads.reserve(this->n_threads);
 
 	unsigned chunk_idx = 0;
+	size_t bytes_read = 0;
 	while (in->good()) {
-	    if (chunk_idx == 0) {
-		in_buffers.emplace_back(std::basic_string<char>());
-		in_buffers.back().resize(this->in_buffer_size);
-		in->read(this->in_buffers[chunk_idx].data(), this->in_buffer_size);
-		const unsigned char *in_bytes_thread = reinterpret_cast<unsigned char*>(this->in_buffers[chunk_idx].data());
-		this->in_streams.emplace_back(pugz::InputStream(in_bytes_thread, this->in_buffer_size));
+	    std::basic_string<unsigned char> in_buffer(this->in_buffer_size, '-');
+	    in->read(reinterpret_cast<char*>(in_buffer.data()), this->in_buffer_size);
+	    pugz::InputStream in_stream(in_buffer.data(), this->in_buffer_size);
 
-		threads.emplace_back([&]() {
-		    pugz::ConsumerWrapper<pugz::OutputConsumer> consumer_wrapper{output, &sync};
-		    consumer_wrapper.set_chunk_idx(0, !in->good());
-		    pugz::DeflateThread deflate_thread(in_streams[chunk_idx], consumer_wrapper);
-		    PRINT_DEBUG("chunk 0 is %p\n", (void*)&deflate_thread);
-		    {
-			std::unique_lock<std::mutex> lock{ready_mtx};
-			deflate_threads.push_back(&deflate_thread);
-			nready++;
-			ready.notify_all();
+	    threads.emplace_back([&]() {
+		pugz::ConsumerWrapper<pugz::OutputConsumer> consumer_wrapper{output, &sync};
+		consumer_wrapper.set_chunk_idx(chunk_idx, !in->good());
+		pugz::DeflateThread *deflate_thread_p;
+		if (chunk_idx == 0) {
+		    deflate_thread_p = new pugz::DeflateThread(in_stream, consumer_wrapper);
+		} else {
+		    deflate_thread_p = new pugz::DeflateThreadRandomAccess(in_stream, consumer_wrapper);
+		}
+		{
+		    std::unique_lock<std::mutex> lock{ready_mtx};
+		    deflate_threads.push_back(deflate_thread_p);
+		    nready++;
+		    ready.notify_all();
 
-			while (nready != this->n_threads)
-			    ready.wait(lock);
-		    }
-		    // First chunk of first section: no context needed
-		    deflate_thread.set_end_block(this->in_buffer_size);
-		    deflate_thread.go(0);
-		});
-	    } else {
-		in_buffers.emplace_back(std::basic_string<char>());
-		in_buffers.back().resize(this->in_buffer_size);
-		in->read(this->in_buffers[chunk_idx].data(), this->in_buffer_size);
-		const unsigned char *in_bytes_thread = reinterpret_cast<unsigned char*>(this->in_buffers[chunk_idx].data());
-		this->in_streams.emplace_back(pugz::InputStream(in_bytes_thread, this->in_buffer_size));
-		threads.emplace_back([&, chunk_idx]() {
-		    pugz::ConsumerWrapper<pugz::OutputConsumer> consumer_wrapper{output, &sync};
-		    consumer_wrapper.set_chunk_idx(chunk_idx, !in->good());
-		    pugz::DeflateThreadRandomAccess deflate_thread{in_streams[chunk_idx], consumer_wrapper};
-		    PRINT_DEBUG("chunk %u is %p\n", chunk_idx, (void*)&deflate_thread);
-		    {
-			std::unique_lock<std::mutex> lock{ready_mtx};
-			deflate_threads.push_back(&deflate_thread);
-			nready++;
-			ready.notify_all();
-
-			while (nready != this->n_threads)
-			    ready.wait(lock);
-
-			deflate_thread.set_upstream(deflate_threads[chunk_idx - 1]);
-		    }
-
-		    const size_t chunk_offset_start = this->in_buffer_size + this->in_buffer_size * (chunk_idx - 1);
-		    const size_t chunk_offset_stop  = this->in_buffer_size + this->in_buffer_size * chunk_idx;
-
-		    const size_t start          = chunk_offset_start;
-		    const size_t stop           = chunk_offset_stop;
-
-		    deflate_thread.set_end_block(stop);
-
-		    consumer_wrapper.set_section_idx(chunk_idx);
-		    deflate_thread.go(start);
-		});
-	    }
+		    while (nready != this->n_threads)
+			ready.wait(lock);
+		}
+		consumer_wrapper.set_section_idx(0);
+		deflate_thread_p->set_end_block((in->good() ? this->in_buffer_size : in->gcount()));
+		deflate_thread_p->go(0);
+	    });
 	    ++chunk_idx;
 	}
 
 	for (auto& thread : threads)
 	    thread.join();
 
-	if (exception) { std::rethrow_exception(exception); }
+	for (size_t i = 0; i < deflate_threads.size(); ++i) {
+	    delete deflate_threads[i];
+	}
     }
 };
 }
