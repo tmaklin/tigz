@@ -107,9 +107,6 @@ private:
 public:
     ParallelDecompressor(size_t _n_threads) {
 	this->n_threads = _n_threads;
-	if (this->n_threads > 1) {
-	    this->chunkSize *= 1_Ki;
-	}
     }
 
     ~ParallelDecompressor() {
