@@ -12,10 +12,18 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wpedantic -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
+## Rapidgzip doesn't compile without this
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fconstexpr-ops-limit=67108864")
 
+if (CMAKE_WITH_NATIVE_INSTRUCTIONS)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -mtune=native")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
+else()
+  set(CMAKE_WITH_NATIVE_INSTRUCTIONS 0)
+endif()
+
 ## Link time optimization
-if(CMAKE_BUILD_WITH_FLTO)
+if(CMAKE_WITH_FLTO)
   cmake_policy(SET CMP0069 NEW)
   set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION 1)
@@ -103,6 +111,7 @@ else()
 		    -D ZLIBNG_ENABLE_TESTS=OFF
 		    -D WITH_GTEST=OFF
 		    -D BUILD_SHARED_LIBS=0
+		    -D WITH_NATIVE_INSTRUCTIONS=CMAKE_WITH_NATIVE_INSTRUCTIONS
     INSTALL_COMMAND   ""
     TEST_COMMAND      ""
     UPDATE_COMMAND    "")
