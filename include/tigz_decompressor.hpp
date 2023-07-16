@@ -40,19 +40,76 @@
 #include <cmath>
 #include <algorithm>
 
-#include "libdeflate.h"
+#include "rapidgzip.hpp"
 #include "BS_thread_pool.hpp"
-
-#include "ParallelGzipReader.hpp"
 
 namespace tigz {
 class ParallelDecompressor {
 private:
-    // Decompression is handled by rapidgzip::ParallelGzipReader
-    // rapidgzip::ParallelGzipReader decompressor;
+    bool countLines = false;
+    bool countBytes = false;
+    bool verbose = false;
+    bool crc32Enabled = false;
+    unsigned int chunkSize{ 4_Mi };
+    std::string index_load_path;
+    std::string index_save_path;
+    size_t n_threads;
+
+    size_t decompress_with_single_thread(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
+	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
+	size_t newlineCount = 0;
+	const auto writeAndCount =
+	    [outputFileDescriptor, &newlineCount, this]
+	    (const void* const buffer,
+	     uint64_t const size) {
+		if (outputFileDescriptor >= 0) {
+		    writeAllToFd(outputFileDescriptor, buffer, size);
+		}
+		if (this->countLines) {
+		    newlineCount += countNewlines({reinterpret_cast<const char*>(buffer),
+			    static_cast<size_t>(size )});
+		}
+	    };
+	rapidgzip::GzipReader gzipReader{ std::move(inputFile) };
+	gzipReader.setCRC32Enabled( this->crc32Enabled );
+	size_t totalBytesRead = gzipReader.read(writeAndCount);
+	return totalBytesRead;
+    }
+
+    size_t decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
+	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
+	size_t newlineCount = 0;
+	const auto writeAndCount =
+	    [outputFileDescriptor, &newlineCount, this]
+	    (const std::shared_ptr<rapidgzip::ChunkData>& chunkData,
+	     size_t const offsetInBlock,
+	     size_t const dataToWriteSize) {
+		writeAll(chunkData, outputFileDescriptor, offsetInBlock, dataToWriteSize);
+		if (this->countLines) {
+		    using rapidgzip::deflate::DecodedData;
+		    for (auto it = DecodedData::Iterator(*chunkData, offsetInBlock, dataToWriteSize);
+			  static_cast<bool>(it); ++it) {
+			const auto& [buffer, size] = *it;
+			newlineCount += countNewlines( { reinterpret_cast<const char*>(buffer), size });
+		    }
+		}
+	    };
+
+	using Reader = rapidgzip::ParallelGzipReader<rapidgzip::ChunkData,
+						     /* enable statistics */ false,
+						     /* show profile */ false>;
+	auto reader = std::make_unique<Reader>(std::move(inputFile), this->n_threads, this->chunkSize);
+	reader->setCRC32Enabled(this->crc32Enabled);
+	size_t totalBytesRead = reader->read(writeAndCount);
+	return totalBytesRead;
+    }
 
 public:
-    ParallelDecompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 1048576, size_t _out_buffer_size = 1048576) {
+    ParallelDecompressor(size_t _n_threads) {
+	this->n_threads = _n_threads;
+	if (this->n_threads > 1) {
+	    this->chunkSize *= 1_Ki;
+	}
     }
 
     ~ParallelDecompressor() {
@@ -64,7 +121,22 @@ public:
     ParallelDecompressor& operator=(const ParallelDecompressor& other) = delete;
     ParallelDecompressor& operator=(const ParallelDecompressor&& other) = delete;
 
-    void decompress_stream(std::istream *in, std::ostream *out) {
+    void decompress_file(const std::string &in_path, std::string &out_path) const {
+	if (in_path.empty()) {
+	    // See https://github.com/mxmlnkn/rapidgzip/commit/496e2e719257bee6340fb7faea2dd886ce90905b
+	    // TODO default to single-threaded libdeflate or zlib for decompressing cin
+	    throw std::runtime_error("tigz can only decompress files.");
+	}
+	auto inputFile = openFileOrStdin(in_path);
+
+        std::unique_ptr<OutputFile> outputFile;
+	outputFile = std::make_unique<OutputFile>(out_path); // Opens cout if out_path is empty
+
+        if (this->n_threads == 1) {
+	    this->decompress_with_single_thread(inputFile, outputFile);
+        } else {
+	    this->decompress_with_many_threads(inputFile, outputFile);
+        }
     }
 };
 }

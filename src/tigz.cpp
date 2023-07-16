@@ -82,72 +82,10 @@ int main(int argc, char* argv[]) {
 	tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 	cmp.compress_stream(&std::cin, &std::cout);
     } else {
-	bool countLines = false;
-	bool countBytes = false;
-	bool verbose = false;
-	size_t newlineCount = 0;
-	bool crc32Enabled = false;
-	size_t totalBytesRead;
-	unsigned int chunkSize{ 4_Mi };
-	std::string index_load_path;
-	std::string index_save_path;
-
 	std::string input_path("test_data_small.txt.gz");
-	auto inputFile = openFileOrStdin(input_path); // Opens stdin
-
 	std::string output_path;
-        std::unique_ptr<OutputFile> outputFile;
-	outputFile = std::make_unique<OutputFile>( output_path );
-
-        const auto outputFileDescriptor = outputFile ? outputFile->fd() : -1;
-
-        if ( n_threads == 1 ) {
-            const auto writeAndCount =
-                [outputFileDescriptor, countLines, &newlineCount]
-                ( const void* const buffer,
-                  uint64_t const    size )
-                {
-                    if ( outputFileDescriptor >= 0 ) {
-                        writeAllToFd( outputFileDescriptor, buffer, size );
-                    }
-                    if ( countLines ) {
-                        newlineCount += countNewlines( { reinterpret_cast<const char*>( buffer ),
-                                                         static_cast<size_t>( size ) } );
-                    }
-                };
-
-            rapidgzip::GzipReader gzipReader{ std::move( inputFile ) };
-            gzipReader.setCRC32Enabled( crc32Enabled );
-            totalBytesRead = gzipReader.read( writeAndCount );
-        } else {
-            const auto writeAndCount =
-                [outputFileDescriptor, countLines, &newlineCount]
-                ( const std::shared_ptr<rapidgzip::ChunkData>& chunkData,
-                  size_t const                               offsetInBlock,
-                  size_t const                               dataToWriteSize )
-                {
-                    writeAll( chunkData, outputFileDescriptor, offsetInBlock, dataToWriteSize );
-                    if ( countLines ) {
-                        using rapidgzip::deflate::DecodedData;
-                        for ( auto it = DecodedData::Iterator( *chunkData, offsetInBlock, dataToWriteSize );
-                              static_cast<bool>( it ); ++it )
-                        {
-                            const auto& [buffer, size] = *it;
-                            newlineCount += countNewlines( { reinterpret_cast<const char*>( buffer ), size } );
-                        }
-                    }
-                };
-
-            chunkSize *= 1_Ki;
-
-	    using Reader = rapidgzip::ParallelGzipReader<rapidgzip::ChunkData, /* enable statistics */ false, /* show profile */ false>;
-	    auto reader = std::make_unique<Reader>( std::move( inputFile ), n_threads, chunkSize );
-	    reader->setCRC32Enabled( crc32Enabled );
-	    totalBytesRead = reader->read( writeAndCount );
-        }
-
-
-
+	tigz::ParallelDecompressor decomp(n_threads);
+	decomp.decompress_file(input_path, output_path);
     }
 
     return 0;
