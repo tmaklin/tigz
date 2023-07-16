@@ -1,7 +1,5 @@
 # tigz
-Parallel gzip compression and decompression.
-
-Tigz is a wrapper around
+Parallel gzip compression and decompression with
 - [libdeflate](https://github.com/ebiggers/libdeflate) by [Eric Biggers](https://github.com/ebiggers) for compression.
 - [rapidgzip](https://github.com/mxmlnkn/rapidgzip) by [Maximilian Knespel](https://github.com/mxmlnkn) for decompression.
 
