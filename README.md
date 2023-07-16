@@ -16,7 +16,7 @@ tigz additionally downloads, or requires, the following dependencies when cmake 
 - [rapidgzip](https://github.com/mxmlnkn/rapidgzip)
 - [zlib-ng](https://github.com/zlib-ng/zlib-ng)
 - [BS::thread_pool](https://github.com/bshoshany/thread-pool)
-- [cxxargs](https://github.com/tmaklin/cxxargs)
+- [cxxopts](https://github.com/jarro2783/cxxopts)
 
 #### Compiling
 Clone the repository, enter the directory, and run
@@ -38,26 +38,24 @@ System `zlib` or `libdeflate` libraries can be supplied by specifying the path t
 cmake -DCMAKE_ZLIB_LIBRARY=/path/to/libz.so -DCMAKE_LIBDEFLATE_LIBRARY=/path/to/libdeflate.so \\
       -DCMAKE_ZLIB_HEADERS=/path/to/zlib.h -DCMAKE_LIBDEFLATE_HEADERS=/path/to/libdeflate.h
 ```
-Preinstalled rapidgzip, BS::thread_pool, or cxxargs headers may be supplied similarly via cmake. These are header-only libraries so the library path is not needed.
+Preinstalled rapidgzip, BS::thread_pool, or cxxopts headers may be supplied similarly via cmake. These are header-only libraries so the library path is not needed.
 
 ## Usage
 ### As an executable
 tigz has the same command-line interface as gzip, bzip2, xz, etc. do. tigz accepts the following flags
 ```
-Usage: tigz [options] -- [files]
-Compress or decompress gzip files in parallel.
+  tigz [options] [files]
 
--z --compress	Compress file(s).
--d --decompress	Decompress file(s).
--k --keep	Keep input file(s) instead of deleting.
--f --force	Force overwrite output file(s).
--c --stdout	Write to standard out, keep files.
--1 ... -12	Compression level (default: 6).
+  -1 ... -12	     Compression level. (default: 6)
 
--T --threads	Number of threads to use (default: 1), 0 means use all available.
-
--h --help	Print this message and quit.
--V --version	Print the version and quit.
+  -z, --compress     Compress file(s).
+  -d, --decompress   Decompress file(s).
+  -k, --keep         Keep input file(s) instead of deleting.
+  -f, --force        Force overwrite output file(s).
+  -c, --stdout       Write to standard out, keep files.
+  -T, --threads arg  Use `arg` threads, 0 means all available. (default: 1)
+  -h, --help         Print this message and quit.
+  -V, --version      Print the version and quit.
 ```
 
 ### As a library
@@ -75,4 +73,4 @@ tigz is licensed under the [BSD-3-Clause license](https://opensource.org/license
 - rapidgzip is dual-licensed under the [MIT license](https://opensource.org/license/mit) or the [Apache 2.0 license](https://opensource.org/license/apache-2-0).
 - zlib-ng is licensed under the [zlib license](https://opensource.org/license/zlib).
 - BS::thread_pool is licensed under the [MIT license](https://opensource.org/license/mit).
-- cxxargs is licensed under the [MPL 2.0 license](https://opensource.org/license/mpl-2-0/).
+- cxxopts is licensed under the [MIT license](https://opensource.org/license/mit).

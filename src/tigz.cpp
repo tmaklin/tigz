@@ -33,41 +33,43 @@
 #include <exception>
 #include <filesystem>
 
-#include "tigz_compressor.hpp"
-#include "tigz_decompressor.hpp"
-
-#include "cxxargs.hpp"
-
+#include "cxxopts.hpp"
 #include "rapidgzip.hpp"
 
 #include "tigz_version.h"
+#include "tigz_compressor.hpp"
+#include "tigz_decompressor.hpp"
 
 bool CmdOptionPresent(char **begin, char **end, const std::string &option) {
     return (std::find(begin, end, option) != end);
 }
 
-bool parse_args(int argc, char* argv[], cxxargs::Arguments &args) {
-    args.add_argument<bool>('z', "compress", "Compress file(s).", false);
-    args.add_argument<bool>('d', "decompress", "Decompress file(s).", false);
-    args.add_argument<bool>('k', "keep", "Keep input file(s) instead of deleting.", false);
-    args.add_argument<bool>('f', "force", "Force overwrite output file(s).", false);
-    args.add_argument<bool>('c', "stdout", "Write to standard out, keep files.\n-1 ... -12\tCompression level (default: 6).\n", false);
+bool parse_args(int argc, char* argv[], cxxopts::Options &options) {
+    options.add_options()
+	("z,compress", "Compress file(s).", cxxopts::value<bool>()->default_value("false"))
+	("d,decompress", "Decompress file(s).", cxxopts::value<bool>()->default_value("false"))
+	("k,keep", "Keep input file(s) instead of deleting.", cxxopts::value<bool>()->default_value("false"))
+	("f,force", "Force overwrite output file(s).", cxxopts::value<bool>()->default_value("false"))
+	("c,stdout", "Write to standard out, keep files.", cxxopts::value<bool>()->default_value("false"))
+	("T,threads", "Use `arg` threads, 0 means all available.", cxxopts::value<size_t>()->default_value("1"))
+	("h,help", "Print this message and quit.", cxxopts::value<bool>()->default_value("false"))
+	("V,version", "Print the version and quit.", cxxopts::value<bool>()->default_value("false"))
+	("filenames", "Input files as positional arguments", cxxopts::value<std::vector<std::string>>()->default_value(""));
 
-    args.add_argument<size_t>('T', "threads", "Number of threads to use (default: 1), 0 means use all available.\n", 1);
-
-    args.add_argument<bool>('h', "help", "Print this message and quit.", false);
-    args.add_argument<bool>('V', "version", "Print the version and quit.", false);
+    options.allow_unrecognised_options(); // Handle the levels
+    options.positional_help("[files]\n\n  -1 ... -12\t     Compression level. (default: 6)");
+    options.custom_help("[options]");
+    options.parse_positional({ "filenames" });
 
     if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h") || argc == 1) {
-	std::cerr << "\n" + args.help() << '\n' << '\n';
-	return true;
+	std::cerr << options.help() << std::endl;
+	return true; // quit
     } else if (CmdOptionPresent(argv, argv+argc, "--version") || CmdOptionPresent(argv, argv+argc, "-V")) {
 	std::cerr << "tigz " << TIGZ_BUILD_VERSION << std::endl;
-	return 1;
-    } else {
-	args.parse(argc, argv);
-	return false;
+	return true; // quit
     }
+
+    return false; // parsing successfull
 }
 
 bool file_exists(const std::string &file_path) {
@@ -76,7 +78,7 @@ bool file_exists(const std::string &file_path) {
 }
 
 int main(int argc, char* argv[]) {
-    cxxargs::Arguments args("tigz-" + std::string(TIGZ_BUILD_VERSION), "Usage: tigz [options] -- [files]\nCompress or decompress gzip files in parallel.\n");
+    cxxopts::Options opts("tigz", "tigz: compress or decompress gzip files in parallel.");
     size_t compression_level = 6;
     try {
 	// Compression levels are special, extract them first
@@ -87,7 +89,7 @@ int main(int argc, char* argv[]) {
 	    }
 	}
 
-	bool quit = parse_args(argc, argv, args);
+	bool quit = parse_args(argc, argv, opts);
 	if (quit) {
 	    return 0;
 	}
@@ -99,15 +101,18 @@ int main(int argc, char* argv[]) {
 	return 1;
     }
 
+    const auto &args = opts.parse(argc, argv);
+
     // n_threads == 0 implies use all available threads
-    size_t n_threads = args.value<size_t>("threads");
+    size_t n_threads = args["threads"].as<size_t>();
 
     // 0 == read from cin
-    size_t n_input_files = args.n_positionals();
+    const std::vector<std::string> &input_files = args["filenames"].as<std::vector<std::string>>();
+    size_t n_input_files = input_files.size();
 
-    if (n_input_files == 0) {
+    if (n_input_files == 1 && input_files[0].empty()) {
 	// Compress from cin to cout
-	if (args.value<bool>('d')) {
+	if (args["decompress"].as<bool>()) {
 	    std::cerr << "tigz: tigz can only decompress files.\ntigz: try `tigz --help` for help." << std::endl;
 	    return 1;
 	}
@@ -115,22 +120,22 @@ int main(int argc, char* argv[]) {
 	cmp.compress_stream(&std::cin, &std::cout);
     } else {
 	// Compress/decompress all positional arguments
-	if (!args.value<bool>('d') || args.value<bool>('z')) {
+	if (!args["decompress"].as<bool>() || args["compress"].as<bool>()) {
 	    // Run compression loop
 	    //
 	    // Reuse compressor
 	    tigz::ParallelCompressor cmp(n_threads, compression_level);
 	    for (size_t i = 0; i < n_input_files; ++i) {
-		const std::string &infile = args.get_positional(i);
+		const std::string &infile = input_files[i];
 		if (!file_exists(infile)) {
 		    std::cerr << "tigz: " << infile << ": no such file or directory." << std::endl;
 		    return 1;
 		}
 		std::ifstream in_stream(infile);
-		if (!args.value<bool>('c')) {
+		if (!args["stdout"].as<bool>()) {
 		    // Add .gz suffix to infile name
 		    const std::string &outfile = infile + ".gz";
-		    if (file_exists(outfile) && !args.value<bool>('f')) {
+		    if (file_exists(outfile) && !args["force"].as<bool>()) {
 			std::cerr << "tigz: " << outfile << ": file exists; use `--force` to overwrite." << std::endl;
 			return 1;
 		    }
@@ -142,18 +147,18 @@ int main(int argc, char* argv[]) {
 		    cmp.compress_stream(&in_stream, &std::cout);
 		}
 
-		if (!args.value<bool>('k')) {
+		if (!args["keep"].as<bool>()) {
 		    std::filesystem::path remove_file{ infile };
 		    std::filesystem::remove(remove_file);
 		}
 	    }
-	} else if (args.value<bool>('d') && !args.value<bool>('z')) {
+	} else if (args["decompress"].as<bool>() && !args["compress"].as<bool>()) {
 	    // Run decompressor loop
 	    //
 	    // Reuse decompressor
 	    tigz::ParallelDecompressor decomp(n_threads);
 	    for (size_t i = 0; i < n_input_files; ++i) {
-		const std::string &infile = args.get_positional(i);
+		const std::string &infile = input_files[i];
 		if (!file_exists(infile)) {
 		    std::cerr << "tigz: " << infile << ": no such file or directory." << std::endl;
 		    return 1;
@@ -163,16 +168,16 @@ int main(int argc, char* argv[]) {
 		size_t lastindex = infile.find_last_of(".");
 
 		// Decompresses to cout if `outfile` equals empty
-		std::string outfile = (args.value<bool>('c') ? "" : infile.substr(0, lastindex));
+		std::string outfile = (args["stdout"].as<bool>() ? "" : infile.substr(0, lastindex));
 
-		if (file_exists(outfile) && !args.value<bool>('f')) {
+		if (file_exists(outfile) && !args["force"].as<bool>()) {
 		    std::cerr << "tigz: " << outfile << ": file exists; use `--force` to overwrite." << std::endl;
 		    return 1;
 		}
 
 		decomp.decompress_file(infile, outfile);
 
-		if (!args.value<bool>('k')) {
+		if (!args["keep"].as<bool>()) {
 		    std::filesystem::path remove_file{ infile };
 		    std::filesystem::remove(remove_file);
 		}

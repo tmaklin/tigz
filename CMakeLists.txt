@@ -122,26 +122,26 @@ endif()
 include_directories(${CMAKE_ZLIB_HEADERS})
 target_link_libraries(tigz ${CMAKE_ZLIB_LIBRARY})
 
-### cxxargs
-if (DEFINED CMAKE_CXXARGS_HEADERS)
-  message(STATUS "cxxargs headers provided in: ${CMAKE_CXXARGS_HEADERS}")
+### cxxopts
+if (DEFINED CMAKE_CXXOPTS_HEADERS)
+  message(STATUS "cxxopts headers provided in: ${CMAKE_CXXOPTS_HEADERS}")
 else()
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-cxxargs.txt.in ${CMAKE_BINARY_DIR}/external/cxxargs-download/CMakeLists.txt)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-cxxopts.txt.in ${CMAKE_BINARY_DIR}/external/cxxopts-download/CMakeLists.txt)
   execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
     RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/cxxargs-download )
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/cxxopts-download )
   if(result)
-    message(FATAL_ERROR "CMake step for cxxargs failed: ${result}")
+    message(FATAL_ERROR "CMake step for cxxopts failed: ${result}")
   endif()
   execute_process(COMMAND ${CMAKE_COMMAND} --build .
     RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/cxxargs-download )
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/cxxopts-download )
   if(result)
-    message(FATAL_ERROR "Build step for cxxargs failed: ${result}")
+    message(FATAL_ERROR "Build step for cxxopts failed: ${result}")
   endif()
-  set(CMAKE_CXXARGS_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/cxxargs/include)
+  set(CMAKE_CXXOPTS_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/cxxopts/include)
 endif()
-include_directories(${CMAKE_CXXARGS_HEADERS})
+include_directories(${CMAKE_CXXOPTS_HEADERS})
 
 ### rapidgzip
 if (DEFINED CMAKE_RAPIDGZIP_HEADERS)
