@@ -32,7 +32,7 @@
 #include <iostream>
 #include <exception>
 
-#include "tigz.hpp"
+#include "tigz_compressor.hpp"
 #include "tigz_decompressor.hpp"
 
 #include "cxxargs.hpp"
