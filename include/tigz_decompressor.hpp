@@ -43,24 +43,16 @@
 #include "libdeflate.h"
 #include "BS_thread_pool.hpp"
 
-#include "pugz_gzip_decompress.hpp"
-#include "pugz_deflate_decompress.hpp"
+#include "ParallelGzipReader.hpp"
 
 namespace tigz {
 class ParallelDecompressor {
 private:
-    // Buffer settings
-    size_t in_buffer_size;
-
-    // Threading
-    size_t n_threads;
+    // Decompression is handled by rapidgzip::ParallelGzipReader
+    // rapidgzip::ParallelGzipReader decompressor;
 
 public:
     ParallelDecompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 1048576, size_t _out_buffer_size = 1048576) {
-	this->n_threads = 1; // TODO handle the multipart compatibility
-
-	// TODO check which ranges work and then check that they're valid
-	this->in_buffer_size = _in_buffer_size;
     }
 
     ~ParallelDecompressor() {
@@ -73,59 +65,6 @@ public:
     ParallelDecompressor& operator=(const ParallelDecompressor&& other) = delete;
 
     void decompress_stream(std::istream *in, std::ostream *out) {
-	pugz::OutputConsumer output{};
-	pugz::ConsumerSync   sync{};
-
-	PRINT_DEBUG("Using %u threads\n", this->n_threads);
-
-	std::vector<std::thread>    threads;
-	std::vector<pugz::DeflateThread*> deflate_threads;
-
-	std::atomic<size_t>     nready = {0};
-	std::condition_variable ready;
-	std::mutex              ready_mtx;
-	std::exception_ptr      exception;
-
-	threads.reserve(this->n_threads);
-
-	unsigned chunk_idx = 0;
-	size_t bytes_read = 0;
-	while (in->good()) {
-	    std::basic_string<unsigned char> in_buffer(this->in_buffer_size, '-');
-	    in->read(reinterpret_cast<char*>(in_buffer.data()), this->in_buffer_size);
-	    pugz::InputStream in_stream(in_buffer.data(), this->in_buffer_size);
-
-	    threads.emplace_back([&]() {
-		pugz::ConsumerWrapper<pugz::OutputConsumer> consumer_wrapper{output, &sync};
-		consumer_wrapper.set_chunk_idx(chunk_idx, !in->good());
-		pugz::DeflateThread *deflate_thread_p;
-		if (chunk_idx == 0) {
-		    deflate_thread_p = new pugz::DeflateThread(in_stream, consumer_wrapper);
-		} else {
-		    deflate_thread_p = new pugz::DeflateThreadRandomAccess(in_stream, consumer_wrapper);
-		}
-		{
-		    std::unique_lock<std::mutex> lock{ready_mtx};
-		    deflate_threads.push_back(deflate_thread_p);
-		    nready++;
-		    ready.notify_all();
-
-		    while (nready != this->n_threads)
-			ready.wait(lock);
-		}
-		consumer_wrapper.set_section_idx(0);
-		deflate_thread_p->set_end_block((in->good() ? this->in_buffer_size : in->gcount()));
-		deflate_thread_p->go(0);
-	    });
-	    ++chunk_idx;
-	}
-
-	for (auto& thread : threads)
-	    thread.join();
-
-	for (size_t i = 0; i < deflate_threads.size(); ++i) {
-	    delete deflate_threads[i];
-	}
     }
 };
 }

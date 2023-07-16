@@ -11,6 +11,9 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wpedantic -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fconstexpr-ops-limit=67108864")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fconstexpr-ops-limit=67108864")
+
 ## Link time optimization
 if(CMAKE_BUILD_WITH_FLTO)
   cmake_policy(SET CMP0069 NEW)
@@ -30,6 +33,10 @@ if (NOT DEFINED CMAKE_TIGZ_HEADERS)
   set(CMAKE_TIGZ_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_BINARY_DIR}/include)
 endif()
 include_directories(${CMAKE_TIGZ_HEADERS})
+
+## zlib
+find_package(ZLIB REQUIRED)
+target_link_libraries(tigz ${ZLIB_LIBRARIES})
 
 ## libdeflate
 if (DEFINED CMAKE_LIBDEFLATE_HEADERS AND DEFINED CMAKE_LIBDEFLATE_LIBRARY)
@@ -79,8 +86,8 @@ include_directories(${CMAKE_CXXARGS_HEADERS})
 set(CMAKE_BS_THREAD_POOL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/external/thread-pool/include)
 include_directories(${CMAKE_BS_THREAD_POOL_HEADERS})
 
-set(CMAKE_PUGZ_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/external/pugz/lib ${CMAKE_CURRENT_SOURCE_DIR}/external/pugz)
-include_directories(${CMAKE_PUGZ_HEADERS})
+set(CMAKE_RAPIDGZIP_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/external/rapidgzip/src/core ${CMAKE_CURRENT_SOURCE_DIR}/external/rapidgzip/src/rapidgzip)
+include_directories(${CMAKE_RAPIDGZIP_HEADERS})
 
 ## Get version number from git tags
 find_package(Git)
