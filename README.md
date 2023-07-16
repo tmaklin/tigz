@@ -56,7 +56,7 @@ Compress or decompress gzip files in parallel.
 
 -T --threads	Number of threads to use (default: 1), 0 means use all available.
 
--h --help		Print this message and quit.
+-h --help	Print this message and quit.
 -V --version	Print the version and quit.
 ```
 

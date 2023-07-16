@@ -55,7 +55,7 @@ bool parse_args(int argc, char* argv[], cxxargs::Arguments &args) {
 
     args.add_argument<size_t>('T', "threads", "Number of threads to use (default: 1), 0 means use all available.\n", 1);
 
-    args.add_argument<bool>('h', "help", "\tPrint this message and quit.", false);
+    args.add_argument<bool>('h', "help", "Print this message and quit.", false);
     args.add_argument<bool>('V', "version", "Print the version and quit.", false);
 
     if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h") || argc == 1) {
