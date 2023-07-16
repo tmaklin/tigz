@@ -1,7 +1,13 @@
-# Truly parallel implementation of gzip
+# tigz
+Parallel gzip compression and decompression.
+
+Tigz is a wrapper around
+- [libdeflate](https://github.com/ebiggers/libdeflate) by [Eric Biggers](https://github.com/ebiggers) for compression.
+- [rapidgzip](https://github.com/mxmlnkn/rapidgzip) by [Maximilian Knespel](https://github.com/mxmlnkn) for decompression.
 
 ## Dependencies
-- [libdeflate](https://github.com/ebiggers/libdeflate).
+- zlib
+- [libdeflate](https://github.com/ebiggers/libdeflate)
 
 ## Compilation
 ```
@@ -17,4 +23,5 @@ tigz is licensed under the [BSD-3-Clause license](https://opensource.org/license
 
 ### Dependencies
 - libdeflate is licensed under the [MIT license](https://opensource.org/license/mit).
-- BS::thread_pool is licensed under the [MIT license](https://opensource.org/license/mit/).
+- rapidgzip is dual-licensed under the [MIT license](https://opensource.org/license/mit) or the [Apache 2.0 license](https://opensource.org/license/apache-2-0).
+- BS::thread_pool is licensed under the [MIT license](https://opensource.org/license/mit).
