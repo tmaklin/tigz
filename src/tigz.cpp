@@ -46,9 +46,14 @@ bool CmdOptionPresent(char **begin, char **end, const std::string &option) {
 }
 
 bool parse_args(int argc, char* argv[], cxxargs::Arguments &args) {
+    args.add_argument<bool>('z', "compress", "Compress file(s).", false);
+    args.add_argument<bool>('d', "decompress", "Decompress file(s).", false);
+    args.add_argument<bool>('c', "stdout", "Write to standard out, keep files.", false);
+    args.add_argument<size_t>('T', "threads", "Number of threads to use (default: 1), 0 means use all available.", 1);
     args.add_long_argument<size_t>("level", "\tCompression level (default: 6).", 6);
-    args.add_long_argument<size_t>("threads", "Number of threads to use (default: 1), 0 means use all available.", 1);
+
     args.add_long_argument<bool>("help", "Print this message and quit.", false);
+
     if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h")) {
 	std::cerr << "\n" + args.help() << '\n' << '\n';
 	return true;
@@ -73,19 +78,50 @@ int main(int argc, char* argv[]) {
 	return 1;
     }
 
-    size_t n_threads = args.value<size_t>("threads");
+    std::cerr << args.n_positionals() << std::endl;
 
+    size_t n_threads = args.value<size_t>("threads");
+    std::cerr << n_threads << std::endl;
 
     // TODO implement reading files from positional arguments
 
-    if (!CmdOptionPresent(argv, argc+argv, "-d")) {
+    size_t n_input_files = args.n_positionals(); // 0 == read from cin
+    if (n_input_files == 0) {
+	if (args.value<bool>('d')) {
+	    std::cerr << "tigz: tigz can only decompress files.\ntigz: try `tigz --help` for help." << std::endl;
+	    return 1;
+	}
+	// Compress from cin to cout
 	tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 	cmp.compress_stream(&std::cin, &std::cout);
     } else {
-	std::string input_path("test_data_small.txt.gz");
-	std::string output_path;
-	tigz::ParallelDecompressor decomp(n_threads);
-	decomp.decompress_file(input_path, output_path);
+	// TODO reuse the (de)compressor class.
+	if (!args.value<bool>('d') || args.value<bool>('z')) {
+	    for (size_t i = 0; i < n_input_files; ++i) {
+		tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
+		const std::string &infile = args.get_positional(i);
+		const std::string &outfile = (args.value<bool>('c') ? "" : infile + ".gz");
+		std::ifstream in_stream(infile);
+		std::ostream *out_stream;
+		if (outfile.empty()) {
+		    out_stream = &std::cout;
+		} else {
+		    out_stream = new std::ofstream(outfile);
+		}
+		cmp.compress_stream(&in_stream, out_stream);
+		if (!outfile.empty()) {
+		    delete out_stream;
+		}
+	    }
+	} else if (args.value<bool>('d') && !args.value<bool>('z')) {
+	    for (size_t i = 0; i < n_input_files; ++i) {
+		tigz::ParallelDecompressor decomp(n_threads);
+		const std::string &infile = args.get_positional(i);
+		size_t lastindex = infile.find_last_of("."); 
+		std::string outfile = (args.value<bool>('c') ? "" : infile.substr(0, lastindex));
+		decomp.decompress_file(infile, outfile);
+	    }
+	}
     }
 
     return 0;
