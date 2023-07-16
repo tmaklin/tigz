@@ -73,51 +73,59 @@ int main(int argc, char* argv[]) {
     } catch (std::exception &e) {
 	std::cerr << "Parsing arguments failed:\n"
 		  << std::string("\t") + std::string(e.what()) + "\n"
-		  << "\trun alignment-writer with the --help option for usage instructions.\n";
+		  << "\trun tigz with the --help option for usage instructions.\n";
 	std::cerr << std::endl;
 	return 1;
     }
 
-    std::cerr << args.n_positionals() << std::endl;
-
+    // n_threads == 0 implies use all available threads
     size_t n_threads = args.value<size_t>("threads");
-    std::cerr << n_threads << std::endl;
 
-    // TODO implement reading files from positional arguments
+    // 0 == read from cin
+    size_t n_input_files = args.n_positionals();
 
-    size_t n_input_files = args.n_positionals(); // 0 == read from cin
     if (n_input_files == 0) {
+	// Compress from cin to cout
 	if (args.value<bool>('d')) {
 	    std::cerr << "tigz: tigz can only decompress files.\ntigz: try `tigz --help` for help." << std::endl;
 	    return 1;
 	}
-	// Compress from cin to cout
 	tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 	cmp.compress_stream(&std::cin, &std::cout);
     } else {
-	// TODO reuse the (de)compressor class.
+	// Compress/decompress all positional arguments
 	if (!args.value<bool>('d') || args.value<bool>('z')) {
+	    // Run compression loop
+	    //
+	    // Reuse compressor
+	    tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 	    for (size_t i = 0; i < n_input_files; ++i) {
-		tigz::ParallelCompressor cmp(n_threads, args.value<size_t>("level"));
 		const std::string &infile = args.get_positional(i);
-		const std::string &outfile = (args.value<bool>('c') ? "" : infile + ".gz");
 		std::ifstream in_stream(infile);
-		std::ostream *out_stream;
-		if (outfile.empty()) {
-		    out_stream = &std::cout;
+
+		if (!args.value<bool>('c')) {
+		    // Add .gz suffix to infile name
+		    const std::string &outfile = infile + ".gz";
+		    std::ofstream out_stream(outfile);
+
+		    cmp.compress_stream(&in_stream, &out_stream);
 		} else {
-		    out_stream = new std::ofstream(outfile);
-		}
-		cmp.compress_stream(&in_stream, out_stream);
-		if (!outfile.empty()) {
-		    delete out_stream;
+		    // Compress to cout
+		    cmp.compress_stream(&in_stream, &std::cout);
 		}
 	    }
 	} else if (args.value<bool>('d') && !args.value<bool>('z')) {
+	    // Run decompressor loop
+	    //
+	    // Reuse decompressor
+	    tigz::ParallelDecompressor decomp(n_threads);
 	    for (size_t i = 0; i < n_input_files; ++i) {
-		tigz::ParallelDecompressor decomp(n_threads);
 		const std::string &infile = args.get_positional(i);
-		size_t lastindex = infile.find_last_of("."); 
+
+		// Remove the .gz suffix from the infile name
+		size_t lastindex = infile.find_last_of(".");
+
+		// Decompresses to cout if `outfile` equals empty
 		std::string outfile = (args.value<bool>('c') ? "" : infile.substr(0, lastindex));
 		decomp.decompress_file(infile, outfile);
 	    }
