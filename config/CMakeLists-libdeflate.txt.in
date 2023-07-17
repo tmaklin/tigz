@@ -9,7 +9,6 @@ ExternalProject_Add(libdeflate-download
   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate"
   BUILD_IN_SOURCE   0
   BUILD_COMMAND	    ""
-  CONFIGURE_COMMAND ""
   CMAKE_ARGS	    -D LIBDEFLATE_BUILD_SHARED_LIB=OFF
   		    -D LIBDEFLATE_BUILD_STATIC_LIB=ON
   		    -D LIBDEFLATE_BUILD_GZIP=OFF

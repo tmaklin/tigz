@@ -67,20 +67,16 @@ else()
   endif()
   ExternalProject_Add(libdeflate
     SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate"
+    BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate-download/libdeflate-download-prefix/src/libdeflate-download-build"
     BUILD_IN_SOURCE   0
-    CMAKE_ARGS	      -D LIBDEFLATE_BUILD_SHARED_LIB=OFF
-                      -D LIBDEFLATE_BUILD_STATIC_LIB=ON
-		      -D LIBDEFLATE_BUILD_GZIP=OFF
-		      -D LIBDEFLATE_BUILD_TESTS=OFF
-		      -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
-		      -D LIBDEFLATE_ZLIB_SUPPORT=OFF
+    CONFIGURE_COMMAND ""
     INSTALL_COMMAND    ""
     TEST_COMMAND       ""
     UPDATE_COMMAND     ""
     )
   add_dependencies(tigz libdeflate)
   set(CMAKE_LIBDEFLATE_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate)
-  set(CMAKE_LIBDEFLATE_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-prefix/src/libdeflate-build/libdeflate.a)
+  set(CMAKE_LIBDEFLATE_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate-download/libdeflate-download-prefix/src/libdeflate-download-build/libdeflate.a)
 endif()
 include_directories(${CMAKE_LIBDEFLATE_HEADERS})
 target_link_libraries(tigz ${CMAKE_LIBDEFLATE_LIBRARY})
@@ -105,19 +101,15 @@ else()
   endif()
   ExternalProject_Add(zlibng
     SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng"
+    BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng-download/zlibng-download-prefix/src/zlibng-download-build"
     BUILD_IN_SOURCE   0
-    CMAKE_ARGS	    -D ZLIB_COMPAT=ON
-  		    -D ZLIB_ENABLE_TESTS=OFF
-		    -D ZLIBNG_ENABLE_TESTS=OFF
-		    -D WITH_GTEST=OFF
-		    -D BUILD_SHARED_LIBS=0
-		    -D WITH_NATIVE_INSTRUCTIONS=CMAKE_WITH_NATIVE_INSTRUCTIONS
+    CONFIGURE_COMMAND ""
     INSTALL_COMMAND   ""
     TEST_COMMAND      ""
     UPDATE_COMMAND    "")
   add_dependencies(tigz zlibng)
   set(CMAKE_ZLIB_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/zlibng-prefix/src/zlibng-build)
-  set(CMAKE_ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/zlibng-prefix/src/zlibng-build/libz.a)
+  set(CMAKE_ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng-download/zlibng-download-prefix/src/zlibng-download-build/libz.a)
 endif()
 include_directories(${CMAKE_ZLIB_HEADERS})
 target_link_libraries(tigz ${CMAKE_ZLIB_LIBRARY})
