@@ -47,6 +47,10 @@ include_directories(${CMAKE_TIGZ_HEADERS})
 
 ## Dependencies
 
+## Threads
+find_package(Threads REQUIRED)
+target_link_libraries(tigz Threads::Threads)
+
 ### libdeflate
 if (DEFINED CMAKE_LIBDEFLATE_HEADERS AND DEFINED CMAKE_LIBDEFLATE_LIBRARY)
   message(STATUS "libdeflate headers provided in: ${CMAKE_LIBDEFLATE_HEADERS}")
