@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
 		    cmp.compress_stream(&in_stream, &std::cout);
 		}
 
-		if (!args["keep"].as<bool>()) {
+		if (!args["keep"].as<bool>() && !args["stdout"].as<bool>()) {
 		    std::filesystem::path remove_file{ infile };
 		    std::filesystem::remove(remove_file);
 		}
