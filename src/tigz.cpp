@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
 
 		decomp.decompress_file(infile, outfile);
 
-		if (!args["keep"].as<bool>()) {
+		if (!args["keep"].as<bool>() && !args["stdout"].as<bool>()) {
 		    std::filesystem::path remove_file{ infile };
 		    std::filesystem::remove(remove_file);
 		}
