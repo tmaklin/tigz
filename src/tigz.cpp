@@ -143,8 +143,12 @@ int main(int argc, char* argv[]) {
 
 		    cmp.compress_stream(&in_stream, &out_stream);
 		} else {
-		    // Compress to cout
-		    cmp.compress_stream(&in_stream, &std::cout);
+		    if (args["force"].as<bool>()) {
+			// Compress to cout if --force is used
+			cmp.compress_stream(&in_stream, &std::cout);
+		    } else {
+			std::cerr << "tigz: refusing to write compressed data to terminal. Use -f to force write." << std::endl;
+		    }
 		}
 
 		if (!args["keep"].as<bool>() && !args["stdout"].as<bool>()) {
