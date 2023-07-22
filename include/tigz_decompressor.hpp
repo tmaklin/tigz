@@ -57,27 +57,26 @@ private:
     size_t n_threads;
 
     int decompress_with_zlib(std::istream *source, std::ostream *dest) const {
-	// Copied from the zlib usage examples
+	// Adapted from the zlib usage examples
 	// https://www.zlib.net/zlib_how.html
-	int ret;
-	unsigned have;
-	z_stream strm;
-	unsigned char in[this->chunkSize];
-	unsigned char out[this->chunkSize];
+	std::basic_string<unsigned char> in(this->chunkSize, '-');
+	std::basic_string<unsigned char> out(this->chunkSize, '-');
 
 	/* allocate inflate state */
+	z_stream strm;
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
 	strm.avail_in = 0;
 	strm.next_in = Z_NULL;
-	ret = inflateInit2(&strm, 15+32);
+
+	int ret = inflateInit2(&strm, 15+32);
 	if (ret != Z_OK)
 	    return ret;
 
 	/* decompress until deflate stream ends or end of file */
 	do {
-	    source->read(reinterpret_cast<char*>(in), this->chunkSize);
+	    source->read(reinterpret_cast<char*>(in.data()), this->chunkSize);
 	    strm.avail_in = source->gcount();
 	    if (source->fail() && !source->eof()) {
 		(void)inflateEnd(&strm);
@@ -85,12 +84,12 @@ private:
 	    }
 	    if (strm.avail_in == 0)
 		break;
-	    strm.next_in = in;
+	    strm.next_in = in.data();
 
 	    /* run inflate() on input until output buffer not full */
 	    do {//
 		strm.avail_out = this->chunkSize;
-		strm.next_out = out;
+		strm.next_out = out.data();
 		ret = inflate(&strm, Z_NO_FLUSH);
 		switch (ret) {
 		case Z_STREAM_ERROR:
@@ -103,8 +102,8 @@ private:
 		    (void)inflateEnd(&strm);
 		    return ret;
 		}
-		have = this->chunkSize - strm.avail_out;
-		dest->write(reinterpret_cast<char*>(out), have);
+		size_t have = this->chunkSize - strm.avail_out;
+		dest->write(reinterpret_cast<char*>(out.data()), have);
 		if (dest->fail()) {
 		    (void)inflateEnd(&strm);
 		    return Z_ERRNO;
