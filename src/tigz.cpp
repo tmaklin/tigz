@@ -28,6 +28,9 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+#include <unistd.h>
+#include <stdio.h>
+
 #include <algorithm>
 #include <iostream>
 #include <exception>
@@ -61,7 +64,7 @@ bool parse_args(int argc, char* argv[], cxxopts::Options &options) {
     options.custom_help("[options]");
     options.parse_positional({ "filenames" });
 
-    if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h") || argc == 1) {
+    if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h")) {
 	std::cerr << options.help() << std::endl;
 	return true; // quit
     } else if (CmdOptionPresent(argv, argv+argc, "--version") || CmdOptionPresent(argv, argv+argc, "-V")) {
@@ -115,7 +118,14 @@ int main(int argc, char* argv[]) {
 	if (args["decompress"].as<bool>()) {
 	    std::cerr << "tigz: tigz can only decompress files.\ntigz: try `tigz --help` for help." << std::endl;
 	    return 1;
+	} else if ((!args["force"].as<bool>() && !args["stdout"].as<bool>()) && (!args["decompress"].as<bool>() || args["compress"].as<bool>())) {
+	    // Refuse to write to terminal without -f or -c
+	    if (isatty(fileno(stdout))) {
+		std::cerr << "tigz: refusing to write compressed data to terminal. Use -f to force write.\ntigz: try `tigz --help` for help." << std::endl;
+		return 1;
+	    }
 	}
+
 	tigz::ParallelCompressor cmp(n_threads, compression_level);
 	cmp.compress_stream(&std::cin, &std::cout);
     } else {
@@ -143,12 +153,7 @@ int main(int argc, char* argv[]) {
 
 		    cmp.compress_stream(&in_stream, &out_stream);
 		} else {
-		    if (args["force"].as<bool>()) {
-			// Compress to cout if --force is used
-			cmp.compress_stream(&in_stream, &std::cout);
-		    } else {
-			std::cerr << "tigz: refusing to write compressed data to terminal. Use -f to force write." << std::endl;
-		    }
+		    cmp.compress_stream(&in_stream, &std::cout);
 		}
 
 		if (!args["keep"].as<bool>() && !args["stdout"].as<bool>()) {
