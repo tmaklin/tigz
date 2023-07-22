@@ -47,15 +47,17 @@
 namespace tigz {
 class ParallelDecompressor {
 private:
+    // Rapidgzip toggles
     bool countLines = false;
-    bool countBytes = false;
-    bool verbose = false;
     bool crc32Enabled = false;
+
+    // Size for internal i/o buffers
     unsigned int chunkSize{ 4_Ki };
-    std::string index_load_path;
-    std::string index_save_path;
+
+    // Number of threads to use in file decompression
     size_t n_threads;
 
+    // Default to zlib when decompressing from an unseekable stream
     int decompress_with_zlib(std::istream *source, std::ostream *dest) const {
 	// Adapted from the zlib usage examples
 	// https://www.zlib.net/zlib_how.html
@@ -118,6 +120,7 @@ private:
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
     }
 
+    // Single-threaded decompression with rapidgzip
     size_t decompress_with_single_thread(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
 	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
 	size_t newlineCount = 0;
@@ -139,6 +142,7 @@ private:
 	return totalBytesRead;
     }
 
+    // Multithreaded decompression with rapidgzip
     size_t decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
 	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
 	size_t newlineCount = 0;
