@@ -40,6 +40,7 @@
 #include <cmath>
 #include <algorithm>
 
+#include "zlib.h"
 #include "rapidgzip.hpp"
 #include "BS_thread_pool.hpp"
 
@@ -50,10 +51,73 @@ private:
     bool countBytes = false;
     bool verbose = false;
     bool crc32Enabled = false;
-    unsigned int chunkSize{ 4_Mi };
+    unsigned int chunkSize{ 4_Ki };
     std::string index_load_path;
     std::string index_save_path;
     size_t n_threads;
+
+    int decompress_with_zlib(std::istream *source, std::ostream *dest) const {
+	// Copied from the zlib usage examples
+	// https://www.zlib.net/zlib_how.html
+	int ret;
+	unsigned have;
+	z_stream strm;
+	unsigned char in[this->chunkSize];
+	unsigned char out[this->chunkSize];
+
+	/* allocate inflate state */
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+	strm.avail_in = 0;
+	strm.next_in = Z_NULL;
+	ret = inflateInit2(&strm, 15+32);
+	if (ret != Z_OK)
+	    return ret;
+
+	/* decompress until deflate stream ends or end of file */
+	do {
+	    source->read(reinterpret_cast<char*>(in), this->chunkSize);
+	    strm.avail_in = source->gcount();
+	    if (source->fail() && !source->eof()) {
+		(void)inflateEnd(&strm);
+		return Z_ERRNO;
+	    }
+	    if (strm.avail_in == 0)
+		break;
+	    strm.next_in = in;
+
+	    /* run inflate() on input until output buffer not full */
+	    do {//
+		strm.avail_out = this->chunkSize;
+		strm.next_out = out;
+		ret = inflate(&strm, Z_NO_FLUSH);
+		switch (ret) {
+		case Z_STREAM_ERROR:
+		    (void)inflateEnd(&strm);
+		    return ret;
+		case Z_NEED_DICT:
+		    ret = Z_DATA_ERROR;     /* and fall through */
+		case Z_DATA_ERROR:
+		case Z_MEM_ERROR:
+		    (void)inflateEnd(&strm);
+		    return ret;
+		}
+		have = this->chunkSize - strm.avail_out;
+		dest->write(reinterpret_cast<char*>(out), have);
+		if (dest->fail()) {
+		    (void)inflateEnd(&strm);
+		    return Z_ERRNO;
+		}
+	    } while (strm.avail_out == 0);
+
+	    /* done when inflate() says it's done */
+	} while (ret != Z_STREAM_END);
+
+	/* clean up and return */
+	(void)inflateEnd(&strm);
+	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+    }
 
     size_t decompress_with_single_thread(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
 	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
@@ -118,12 +182,11 @@ public:
     ParallelDecompressor& operator=(const ParallelDecompressor& other) = delete;
     ParallelDecompressor& operator=(const ParallelDecompressor&& other) = delete;
 
+    void decompress_stream(std::istream *in, std::ostream *out) const {
+	this->decompress_with_zlib(in, out);
+    }
+
     void decompress_file(const std::string &in_path, std::string &out_path) const {
-	if (in_path.empty()) {
-	    // See https://github.com/mxmlnkn/rapidgzip/commit/496e2e719257bee6340fb7faea2dd886ce90905b
-	    // TODO default to single-threaded libdeflate or zlib for decompressing cin
-	    throw std::runtime_error("tigz can only decompress files.");
-	}
 	auto inputFile = openFileOrStdin(in_path);
 
         std::unique_ptr<OutputFile> outputFile;

@@ -110,15 +110,20 @@ int main(int argc, char* argv[]) {
     const std::vector<std::string> &input_files = args["filenames"].as<std::vector<std::string>>();
     size_t n_input_files = input_files.size();
 
-    if (n_input_files == 1 && input_files[0].empty()) {
+    if (!isatty(fileno(stdin))) {
 	// Compress from cin to cout
 	if (args["decompress"].as<bool>()) {
-	    std::cerr << "tigz: tigz can only decompress files.\ntigz: try `tigz --help` for help." << std::endl;
-	    return 1;
+	    if (n_threads > 1) {
+		std::cerr << "tigz: WARNING: will use only use a single thread when decompressing input from stdin." << std::endl;
+	    }
+	    tigz::ParallelDecompressor decomp(n_threads);
+	    decomp.decompress_stream(&std::cin, &std::cout);
+	} else {
+	    tigz::ParallelCompressor cmp(n_threads, compression_level);
+	    cmp.compress_stream(&std::cin, &std::cout);
 	}
-	tigz::ParallelCompressor cmp(n_threads, compression_level);
-	cmp.compress_stream(&std::cin, &std::cout);
-    } else {
+    }
+    if (!input_files[0].empty()) {
 	// Compress/decompress all positional arguments
 	if (!args["decompress"].as<bool>() || args["compress"].as<bool>()) {
 	    // Run compression loop
