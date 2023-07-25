@@ -232,14 +232,23 @@ public:
     }
 
     void decompress_file(const std::string &in_path, std::string &out_path) const {
-	auto inputFile = openFileOrStdin(in_path);
-
-        std::unique_ptr<OutputFile> outputFile;
-	outputFile = std::make_unique<OutputFile>(out_path); // Opens cout if out_path is empty
 
         if (this->n_threads == 1) {
-	    this->decompress_with_single_thread(inputFile, outputFile);
+	    std::ifstream in(in_path);
+	    if (out_path.empty()) {
+		this->decompress_with_zlib(&in, &std::cout);
+	    } else {
+		std::ofstream out(out_path);
+		this->decompress_with_zlib(&in, &out);
+		out.close();
+	    }
+	    in.close();
         } else {
+	    auto inputFile = openFileOrStdin(in_path);
+
+	    std::unique_ptr<OutputFile> outputFile;
+	    outputFile = std::make_unique<OutputFile>(out_path); // Opens cout if out_path is empty
+
 	    this->decompress_with_many_threads(inputFile, outputFile);
         }
     }
