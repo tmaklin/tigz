@@ -61,7 +61,7 @@ private:
     std::vector<libdeflate_compressor*> compressors;
 
 public:
-    ParallelCompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 1048576, size_t _out_buffer_size = 1048576) {
+    ParallelCompressor(size_t _n_threads, size_t _compression_level = 6, size_t _in_buffer_size = 131072, size_t _out_buffer_size = 131072) {
 	this->n_threads = (_n_threads > 0 ? _n_threads : std::thread::hardware_concurrency());
 	this->pool.reset(this->n_threads);
 
