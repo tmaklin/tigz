@@ -200,3 +200,6 @@ string(TIMESTAMP TIGZ_BUILD_TIMESTAMP)
 
 ## Generate a version.h file containing build version and timestamp
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/tigz_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/tigz_version.h @ONLY)
+
+## make install
+install(TARGETS tigz)

@@ -28,6 +28,10 @@ make -j
 ```
 This will create the tigz executable in the `build/bin` directory.
 
+Optinally, use `make install` afterwards to install tigz. The
+installation path can be modified by passing
+`-DCMAKE_INSTALL_PREFIX=/path/to/install/tigz/in` to cmake.
+
 #### Extra compiler flags
 - Native CPU instructions: `-DCMAKE_WITH_NATIVE_INSTRUCTIONS=1`
 - Link-time optimization: `-DCMAKE_WITH_FLTO=1`
