@@ -142,10 +142,6 @@ namespace zwrapper {
 
 class ParallelDecompressor {
 private:
-    // Rapidgzip toggles
-    bool countLines = false;
-    bool crc32Enabled = false;
-
     // Size for internal i/o buffers
     unsigned int chunkSize{ 4_Ki };
 
@@ -153,32 +149,21 @@ private:
     size_t n_threads;
 
     // Multithreaded decompression with rapidgzip
-    size_t decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
+    void decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
 	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
-	size_t newlineCount = 0;
 	const auto writeAndCount =
-	    [outputFileDescriptor, &newlineCount, this]
+	    [outputFileDescriptor, this]
 	    (const std::shared_ptr<rapidgzip::ChunkData>& chunkData,
 	     size_t const offsetInBlock,
 	     size_t const dataToWriteSize) {
 		writeAll(chunkData, outputFileDescriptor, offsetInBlock, dataToWriteSize);
-		if (this->countLines) {
-		    using rapidgzip::deflate::DecodedData;
-		    for (auto it = DecodedData::Iterator(*chunkData, offsetInBlock, dataToWriteSize);
-			  static_cast<bool>(it); ++it) {
-			const auto& [buffer, size] = *it;
-			newlineCount += countNewlines( { reinterpret_cast<const char*>(buffer), size });
-		    }
-		}
 	    };
 
 	using Reader = rapidgzip::ParallelGzipReader<rapidgzip::ChunkData,
 						     /* enable statistics */ false,
 						     /* show profile */ false>;
 	auto reader = std::make_unique<Reader>(std::move(inputFile), this->n_threads, this->chunkSize);
-	reader->setCRC32Enabled(this->crc32Enabled);
-	size_t totalBytesRead = reader->read(writeAndCount);
-	return totalBytesRead;
+	reader->read(writeAndCount);
     }
 
 public:
@@ -191,7 +176,6 @@ public:
     }
 
     void decompress_file(const std::string &in_path, std::string &out_path) const {
-
         if (this->n_threads == 1) {
 	    std::ifstream in(in_path);
 	    if (out_path.empty()) {
