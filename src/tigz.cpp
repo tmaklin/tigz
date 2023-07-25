@@ -28,6 +28,9 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+#include <unistd.h>
+#include <stdio.h>
+
 #include <algorithm>
 #include <iostream>
 #include <exception>
@@ -61,7 +64,7 @@ bool parse_args(int argc, char* argv[], cxxopts::Options &options) {
     options.custom_help("[options]");
     options.parse_positional({ "filenames" });
 
-    if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h") || argc == 1) {
+    if (CmdOptionPresent(argv, argv+argc, "--help") || CmdOptionPresent(argv, argv+argc, "-h")) {
 	std::cerr << options.help() << std::endl;
 	return true; // quit
     } else if (CmdOptionPresent(argv, argv+argc, "--version") || CmdOptionPresent(argv, argv+argc, "-V")) {
@@ -110,6 +113,14 @@ int main(int argc, char* argv[]) {
     const std::vector<std::string> &input_files = args["filenames"].as<std::vector<std::string>>();
     size_t n_input_files = input_files.size();
 
+
+    if (!args["force"].as<bool>() && !args["decompress"].as<bool>()) {
+	// Refuse to write to terminal without -f or -c
+	if (isatty(fileno(stdout))) {
+	    std::cerr << "tigz: refusing to write compressed data to terminal. Use -f to force write.\ntigz: try `tigz --help` for help." << std::endl;
+	    return 1;
+	}
+    }
     if (!isatty(fileno(stdin))) {
 	// Compress from cin to cout
 	if (args["decompress"].as<bool>()) {
