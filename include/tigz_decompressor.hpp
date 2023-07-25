@@ -64,6 +64,8 @@ private:
 	std::basic_string<unsigned char> in(this->chunkSize, '-');
 	std::basic_string<unsigned char> out(this->chunkSize, '-');
 
+
+	int ret;
 	/* allocate inflate state */
 	z_stream strm;
 	strm.zalloc = Z_NULL;
@@ -71,52 +73,92 @@ private:
 	strm.opaque = Z_NULL;
 	strm.avail_in = 0;
 	strm.next_in = Z_NULL;
-
-	int ret = inflateInit2(&strm, 15+32);
+	ret = inflateInit2(&strm, 15+32);
 	if (ret != Z_OK)
 	    return ret;
 
-	/* decompress until deflate stream ends or end of file */
-	do {
-	    source->read(reinterpret_cast<char*>(in.data()), this->chunkSize);
-	    strm.avail_in = source->gcount();
-	    if (source->fail() && !source->eof()) {
-		(void)inflateEnd(&strm);
-		return Z_ERRNO;
-	    }
-	    if (strm.avail_in == 0)
-		break;
-	    strm.next_in = in.data();
+	while (source->good()) {
 
-	    /* run inflate() on input until output buffer not full */
-	    do {//
-		strm.avail_out = this->chunkSize;
-		strm.next_out = out.data();
-		ret = inflate(&strm, Z_NO_FLUSH);
-		switch (ret) {
-		case Z_STREAM_ERROR:
-		    (void)inflateEnd(&strm);
-		    return ret;
-		case Z_NEED_DICT:
-		    ret = Z_DATA_ERROR;     /* and fall through */
-		case Z_DATA_ERROR:
-		case Z_MEM_ERROR:
-		    (void)inflateEnd(&strm);
-		    return ret;
-		}
-		size_t have = this->chunkSize - strm.avail_out;
-		dest->write(reinterpret_cast<char*>(out.data()), have);
-		if (dest->fail()) {
+	    /* decompress until deflate stream ends or end of file */
+	    do {
+		source->read(reinterpret_cast<char*>(in.data()), this->chunkSize);
+		strm.avail_in = source->gcount();
+		if (source->fail() && !source->eof()) {
 		    (void)inflateEnd(&strm);
 		    return Z_ERRNO;
 		}
-	    } while (strm.avail_out == 0);
+		if (strm.avail_in == 0)
+		    break;
+		strm.next_in = in.data();
 
-	    /* done when inflate() says it's done */
-	} while (ret != Z_STREAM_END);
+		/* run inflate() on input until output buffer not full */
+		do {//
+		    strm.avail_out = this->chunkSize;
+		    strm.next_out = out.data();
+		    ret = inflate(&strm, Z_NO_FLUSH);
+		    switch (ret) {
+		    case Z_STREAM_ERROR:
+			(void)inflateEnd(&strm);
+			return ret;
+		    case Z_NEED_DICT:
+			ret = Z_DATA_ERROR;     /* and fall through */
+		    case Z_DATA_ERROR:
+		    case Z_MEM_ERROR:
+			(void)inflateEnd(&strm);
+			return ret;
+		    }
+		    size_t have = this->chunkSize - strm.avail_out;
+		    dest->write(reinterpret_cast<char*>(out.data()), have);
+		    if (dest->fail()) {
+			(void)inflateEnd(&strm);
+			return Z_ERRNO;
+		    }
+		} while (strm.avail_out == 0);
+		// Part done when ret == Z_STREAM_END
+	    } while (ret != Z_STREAM_END);
+	    if (source->good()) {
+		// Probably reading a multipart file, keep going
+		// Previous inflate() may not have consumed the entire input buffer
+		int in_to_consume = this->chunkSize - (strm.next_in - &in.data()[0]); // Pointer arithmetic to determine amount of buffer left
+		unsigned char* header_start = &in.data()[this->chunkSize - strm.avail_in];
+		(void)inflateEnd(&strm);
+		strm.zalloc = Z_NULL;
+		strm.zfree = Z_NULL;
+		strm.opaque = Z_NULL;
+		strm.avail_in = 0;
+		strm.next_in = Z_NULL;
+		ret = inflateInit2(&strm, 15+32);
+		strm.next_in = header_start;
+		strm.avail_in = in_to_consume;
+		/* run inflate() on input until output buffer not full */
+		do {//
+		    strm.avail_out = this->chunkSize;
+		    strm.next_out = out.data();
+		    ret = inflate(&strm, Z_NO_FLUSH);
+		    switch (ret) {
+		    case Z_STREAM_ERROR:
+			(void)inflateEnd(&strm);
+			return ret;
+		    case Z_NEED_DICT:
+			ret = Z_DATA_ERROR;     /* and fall through */
+		    case Z_DATA_ERROR:
+		    case Z_MEM_ERROR:
+			(void)inflateEnd(&strm);
+			return ret;
+		    }
+		    size_t have = this->chunkSize - strm.avail_out;
+		    dest->write(reinterpret_cast<char*>(out.data()), have);
+		    if (dest->fail()) {
+			(void)inflateEnd(&strm);
+			return Z_ERRNO;
+		    }
+		} while (strm.avail_out == 0);
+	    } else {
+		// Done
+		(void)inflateEnd(&strm);
+	    }
+	}
 
-	/* clean up and return */
-	(void)inflateEnd(&strm);
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
     }
 
