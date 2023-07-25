@@ -54,13 +54,14 @@ bool parse_args(int argc, char* argv[], cxxopts::Options &options) {
 	("k,keep", "Keep input file(s) instead of deleting.", cxxopts::value<bool>()->default_value("false"))
 	("f,force", "Force overwrite output file(s).", cxxopts::value<bool>()->default_value("false"))
 	("c,stdout", "Write to standard out, keep files.", cxxopts::value<bool>()->default_value("false"))
-	("T,threads", "Use `arg` threads, 0 means all available.", cxxopts::value<size_t>()->default_value("1"))
+	("T,threads", "Use `arg` threads, 0 = all available.", cxxopts::value<size_t>()->default_value("1"))
+	("b,block-size", "i/o buffer sizes per thread in KiB.", cxxopts::value<size_t>()->default_value("128"))
 	("h,help", "Print this message and quit.", cxxopts::value<bool>()->default_value("false"))
 	("V,version", "Print the version and quit.", cxxopts::value<bool>()->default_value("false"))
 	("filenames", "Input files as positional arguments", cxxopts::value<std::vector<std::string>>()->default_value(""));
 
     options.allow_unrecognised_options(); // Handle the levels
-    options.positional_help("[files]\n\n  -1 ... -12\t     Compression level. (default: 6)");
+    options.positional_help("[files]\n\n  -1 ... -12\t        Compression level. (default: 6)");
     options.custom_help("[options]");
     options.parse_positional({ "filenames" });
 
@@ -109,6 +110,9 @@ int main(int argc, char* argv[]) {
     // n_threads == 0 implies use all available threads
     size_t n_threads = args["threads"].as<size_t>();
 
+    // Convert block size to kilobytes
+    size_t block_size = args["block-size"].as<size_t>() * 1024;
+
     // 0 == read from cin
     const std::vector<std::string> &input_files = args["filenames"].as<std::vector<std::string>>();
     size_t n_input_files = input_files.size();
@@ -127,10 +131,10 @@ int main(int argc, char* argv[]) {
 	    if (n_threads > 1) {
 		std::cerr << "tigz: WARNING: will use only use a single thread when decompressing input from stdin." << std::endl;
 	    }
-	    tigz::ParallelDecompressor decomp(n_threads);
+	    tigz::ParallelDecompressor decomp(n_threads, block_size);
 	    decomp.decompress_stream(&std::cin, &std::cout);
 	} else {
-	    tigz::ParallelCompressor cmp(n_threads, compression_level);
+	    tigz::ParallelCompressor cmp(n_threads, compression_level, block_size, block_size);
 	    cmp.compress_stream(&std::cin, &std::cout);
 	}
     }
@@ -140,7 +144,7 @@ int main(int argc, char* argv[]) {
 	    // Run compression loop
 	    //
 	    // Reuse compressor
-	    tigz::ParallelCompressor cmp(n_threads, compression_level);
+	    tigz::ParallelCompressor cmp(n_threads, compression_level, block_size, block_size);
 	    for (size_t i = 0; i < n_input_files; ++i) {
 		const std::string &infile = input_files[i];
 		if (!file_exists(infile)) {
@@ -172,7 +176,7 @@ int main(int argc, char* argv[]) {
 	    // Run decompressor loop
 	    //
 	    // Reuse decompressor
-	    tigz::ParallelDecompressor decomp(n_threads);
+	    tigz::ParallelDecompressor decomp(n_threads, block_size);
 	    for (size_t i = 0; i < n_input_files; ++i) {
 		const std::string &infile = input_files[i];
 		if (!file_exists(infile)) {

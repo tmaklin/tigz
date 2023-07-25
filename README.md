@@ -50,16 +50,17 @@ tigz has the same command-line interface as gzip, bzip2, xz, etc. do. tigz accep
 ```
   tigz [options] [files]
 
-  -1 ... -12	     Compression level. (default: 6)
+  -1 ... -12	        Compression level. (default: 6)
 
-  -z, --compress     Compress file(s).
-  -d, --decompress   Decompress file(s).
-  -k, --keep         Keep input file(s) instead of deleting.
-  -f, --force        Force overwrite output file(s).
-  -c, --stdout       Write to standard out, keep files.
-  -T, --threads arg  Use `arg` threads, 0 means all available. (default: 1)
-  -h, --help         Print this message and quit.
-  -V, --version      Print the version and quit.
+  -z, --compress        Compress file(s).
+  -d, --decompress      Decompress file(s).
+  -k, --keep            Keep input file(s) instead of deleting.
+  -f, --force           Force overwrite output file(s).
+  -c, --stdout          Write to standard out, keep files.
+  -T, --threads arg     Use `arg` threads, 0 = all available. (default: 1)
+  -b, --block-size arg  i/o buffer sizes per thread in KiB. (default: 128)
+  -h, --help            Print this message and quit.
+  -V, --version         Print the version and quit.
 ```
 
 ### As a library
