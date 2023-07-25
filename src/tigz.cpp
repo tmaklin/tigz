@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
     size_t n_input_files = input_files.size();
 
 
-    if (!args["force"].as<bool>() && !args["decompress"].as<bool>()) {
+    if (!args["force"].as<bool>() && !args["decompress"].as<bool>() && input_files[0].empty()) {
 	// Refuse to write to terminal without -f or -c
 	if (isatty(fileno(stdout))) {
 	    std::cerr << "tigz: refusing to write compressed data to terminal. Use -f to force write.\ntigz: try `tigz --help` for help." << std::endl;
