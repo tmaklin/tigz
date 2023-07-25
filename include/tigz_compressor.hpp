@@ -101,13 +101,11 @@ public:
 	std::vector<bool> input_was_read(this->n_threads, false);
 	std::vector<bool> stream_still_good(this->n_threads, true);
 	while (in->good()) {
-	    for (size_t i = 0; i < this->n_threads && (in->good()); ++i) {
+	    std::vector<std::future<size_t>> thread_futures(this->n_threads);
+	    for (size_t i = 0; i < this->n_threads; ++i) {
 		in->read(const_cast<char*>(this->in_buffers[i].data()), this->in_buffer_size);
 		input_was_read[i] = true;
 		stream_still_good[i] = in->good();
-	    }
-	    std::vector<std::future<size_t>> thread_futures(this->n_threads);
-	    for (size_t i = 0; i < this->n_threads; ++i) {
 		if (input_was_read[i]) {
 		    thread_futures[i] = this->pool.submit(libdeflate_gzip_compress,
 							  this->compressors[i],
