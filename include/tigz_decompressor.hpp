@@ -40,42 +40,119 @@
 #include <cmath>
 #include <algorithm>
 
+#include "zlib.h"
 #include "rapidgzip.hpp"
 #include "BS_thread_pool.hpp"
 
 namespace tigz {
-class ParallelDecompressor {
-private:
-    bool countLines = false;
-    bool countBytes = false;
-    bool verbose = false;
-    bool crc32Enabled = false;
-    unsigned int chunkSize{ 4_Mi };
-    std::string index_load_path;
-    std::string index_save_path;
-    size_t n_threads;
-
-    size_t decompress_with_single_thread(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
-	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
-	size_t newlineCount = 0;
-	const auto writeAndCount =
-	    [outputFileDescriptor, &newlineCount, this]
-	    (const void* const buffer,
-	     uint64_t const size) {
-		if (outputFileDescriptor >= 0) {
-		    writeAllToFd(outputFileDescriptor, buffer, size);
-		}
-		if (this->countLines) {
-		    newlineCount += countNewlines({reinterpret_cast<const char*>(buffer),
-			    static_cast<size_t>(size )});
-		}
-	    };
-	rapidgzip::GzipReader gzipReader{ std::move(inputFile) };
-	gzipReader.setCRC32Enabled( this->crc32Enabled );
-	size_t totalBytesRead = gzipReader.read(writeAndCount);
-	return totalBytesRead;
+namespace zwrapper {
+    int init_z_stream(z_stream *strm_p, const size_t window_size = 0) {
+	strm_p->zalloc = Z_NULL;
+	strm_p->zfree = Z_NULL;
+	strm_p->opaque = Z_NULL;
+	strm_p->avail_in = 0;
+	strm_p->next_in = Z_NULL;
+	int ret = (window_size == 0 ? inflateInit(strm_p) : inflateInit2(strm_p, window_size));
+	return ret;
     }
 
+    int decompress_block(const size_t chunk_size, std::basic_string<unsigned char> *out, std::ostream *dest, z_stream *strm_p) {
+	int ret; // zlib return code
+
+	do {
+	    strm_p->avail_out = chunk_size;
+	    strm_p->next_out = out->data();
+	    ret = inflate(strm_p, Z_NO_FLUSH);
+	    switch (ret) {
+	    case Z_STREAM_ERROR:
+		(void)inflateEnd(strm_p);
+		return ret;
+	    case Z_NEED_DICT:
+		ret = Z_DATA_ERROR;     /* and fall through */
+	    case Z_DATA_ERROR:
+	    case Z_MEM_ERROR:
+		(void)inflateEnd(strm_p);
+		return ret;
+	    }
+	    size_t have = chunk_size - strm_p->avail_out;
+	    dest->write(reinterpret_cast<char*>(out->data()), have);
+	    if (dest->fail()) {
+		(void)inflateEnd(strm_p);
+		return Z_ERRNO;
+	    }
+	} while (strm_p->avail_out == 0);
+
+	return ret;
+    }
+
+    // Default to zlib when decompressing from an unseekable stream
+    int decompress_stream(const size_t chunk_size, std::istream *source, std::ostream *dest) {
+	// Adapted from the zlib usage examples
+	// https://www.zlib.net/zlib_how.html
+	std::basic_string<unsigned char> in(chunk_size, '-');
+	std::basic_string<unsigned char> out(chunk_size, '-');
+
+	/* allocate inflate state */
+	z_stream strm;
+	int ret = init_z_stream(&strm, 15+32);
+
+	if (ret != Z_OK)
+	    return ret;
+
+	while (source->good()) {
+
+	    /* decompress until deflate stream ends or end of file */
+	    do {
+		source->read(reinterpret_cast<char*>(in.data()), chunk_size);
+		strm.avail_in = source->gcount();
+		if (source->fail() && !source->eof()) {
+		    (void)inflateEnd(&strm);
+		    return Z_ERRNO;
+		}
+		if (strm.avail_in == 0)
+		    break;
+		strm.next_in = in.data();
+
+		/* run inflate() on input until output buffer not full */
+		ret = decompress_block(chunk_size, &out, dest, &strm);
+
+		// Part done when ret == Z_STREAM_END
+	    } while (ret != Z_STREAM_END);
+	    if (source->good()) {
+		// Probably reading a multipart file, keep going
+		// Previous inflate() may not have consumed the entire input buffer
+		int in_to_consume = chunk_size - (strm.next_in - &in.data()[0]); // Pointer arithmetic to determine amount of buffer left
+		unsigned char* header_start = &in.data()[chunk_size - strm.avail_in];
+		(void)inflateEnd(&strm);
+		ret = init_z_stream(&strm, 15+32);
+		strm.next_in = header_start;
+		strm.avail_in = in_to_consume;
+
+		/* run inflate() on input until output buffer not full */
+		decompress_block(chunk_size, &out, dest, &strm);
+	    } else {
+		// Done
+		(void)inflateEnd(&strm);
+	    }
+	}
+
+	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+    }
+}
+
+class ParallelDecompressor {
+private:
+    // Rapidgzip toggles
+    bool countLines = false;
+    bool crc32Enabled = false;
+
+    // Size for internal i/o buffers
+    unsigned int chunkSize{ 4_Ki };
+
+    // Number of threads to use in file decompression
+    size_t n_threads;
+
+    // Multithreaded decompression with rapidgzip
     size_t decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
 	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
 	size_t newlineCount = 0;
@@ -109,29 +186,28 @@ public:
 	this->n_threads = _n_threads;
     }
 
-    ~ParallelDecompressor() {
+    void decompress_stream(std::istream *in, std::ostream *out) const {
+	zwrapper::decompress_stream(this->chunkSize, in, out);
     }
 
-    // Delete copy and move constructors & copy and move assignment operators
-    ParallelDecompressor(const ParallelDecompressor& other) = delete;
-    ParallelDecompressor(ParallelDecompressor&& other) = delete;
-    ParallelDecompressor& operator=(const ParallelDecompressor& other) = delete;
-    ParallelDecompressor& operator=(const ParallelDecompressor&& other) = delete;
-
     void decompress_file(const std::string &in_path, std::string &out_path) const {
-	if (in_path.empty()) {
-	    // See https://github.com/mxmlnkn/rapidgzip/commit/496e2e719257bee6340fb7faea2dd886ce90905b
-	    // TODO default to single-threaded libdeflate or zlib for decompressing cin
-	    throw std::runtime_error("tigz can only decompress files.");
-	}
-	auto inputFile = openFileOrStdin(in_path);
-
-        std::unique_ptr<OutputFile> outputFile;
-	outputFile = std::make_unique<OutputFile>(out_path); // Opens cout if out_path is empty
 
         if (this->n_threads == 1) {
-	    this->decompress_with_single_thread(inputFile, outputFile);
+	    std::ifstream in(in_path);
+	    if (out_path.empty()) {
+		zwrapper::decompress_stream(this->chunkSize, &in, &std::cout);
+	    } else {
+		std::ofstream out(out_path);
+		zwrapper::decompress_stream(this->chunkSize, &in, &out);
+		out.close();
+	    }
+	    in.close();
         } else {
+	    auto inputFile = openFileOrStdin(in_path);
+
+	    std::unique_ptr<OutputFile> outputFile;
+	    outputFile = std::make_unique<OutputFile>(out_path); // Opens cout if out_path is empty
+
 	    this->decompress_with_many_threads(inputFile, outputFile);
         }
     }
