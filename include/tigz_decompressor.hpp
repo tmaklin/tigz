@@ -56,12 +56,13 @@ namespace zwrapper {
 	return ret;
     }
 
-    int decompress_block(const size_t chunk_size, std::basic_string<unsigned char> *out, std::ostream *dest, z_stream *strm_p) {
+    int decompress_block(const size_t buffer_size, std::ostream *dest, z_stream *strm_p) {
 	int ret; // zlib return code
+	std::basic_string<unsigned char> out(buffer_size, '-');
 
 	do {
-	    strm_p->avail_out = chunk_size;
-	    strm_p->next_out = out->data();
+	    strm_p->avail_out = buffer_size;
+	    strm_p->next_out = out.data();
 	    ret = inflate(strm_p, Z_NO_FLUSH);
 	    switch (ret) {
 	    case Z_STREAM_ERROR:
@@ -74,8 +75,8 @@ namespace zwrapper {
 		(void)inflateEnd(strm_p);
 		return ret;
 	    }
-	    size_t have = chunk_size - strm_p->avail_out;
-	    dest->write(reinterpret_cast<char*>(out->data()), have);
+	    size_t have = buffer_size - strm_p->avail_out;
+	    dest->write(reinterpret_cast<char*>(out.data()), have);
 	    if (dest->fail()) {
 		(void)inflateEnd(strm_p);
 		return Z_ERRNO;
@@ -86,13 +87,11 @@ namespace zwrapper {
     }
 
     // Default to zlib when decompressing from an unseekable stream
-    int decompress_stream(const size_t chunk_size, std::istream *source, std::ostream *dest) {
+    int decompress_stream(size_t buffer_size, std::istream *source, std::ostream *dest) {
 	// Adapted from the zlib usage examples
 	// https://www.zlib.net/zlib_how.html
-	std::basic_string<unsigned char> in(chunk_size, '-');
-	std::basic_string<unsigned char> out(chunk_size, '-');
-
 	/* allocate inflate state */
+	buffer_size = (buffer_size > 262144 ? 262144 : buffer_size); // Limit the maximum buffer size (large values behave weirdly)
 	z_stream strm;
 	int ret = init_z_stream(&strm, 15+32);
 
@@ -100,10 +99,10 @@ namespace zwrapper {
 	    return ret;
 
 	while (source->good()) {
-
+	    std::basic_string<unsigned char> in(buffer_size, '-');
 	    /* decompress until deflate stream ends or end of file */
 	    do {
-		source->read(reinterpret_cast<char*>(in.data()), chunk_size);
+		source->read(reinterpret_cast<char*>(in.data()), buffer_size);
 		strm.avail_in = source->gcount();
 		if (source->fail() && !source->eof()) {
 		    (void)inflateEnd(&strm);
@@ -114,22 +113,22 @@ namespace zwrapper {
 		strm.next_in = in.data();
 
 		/* run inflate() on input until output buffer not full */
-		ret = decompress_block(chunk_size, &out, dest, &strm);
+		ret = decompress_block(buffer_size, dest, &strm);
 
 		// Part done when ret == Z_STREAM_END
 	    } while (ret != Z_STREAM_END);
 	    if (source->good()) {
 		// Probably reading a multipart file, keep going
 		// Previous inflate() may not have consumed the entire input buffer
-		int in_to_consume = chunk_size - (strm.next_in - &in.data()[0]); // Pointer arithmetic to determine amount of buffer left
-		unsigned char* header_start = &in.data()[chunk_size - strm.avail_in];
+		int in_to_consume = buffer_size - (strm.next_in - &in.data()[0]); // Pointer arithmetic to determine amount of buffer left
+		unsigned char* header_start = &in.data()[buffer_size - strm.avail_in];
 		(void)inflateEnd(&strm);
 		ret = init_z_stream(&strm, 15+32);
 		strm.next_in = header_start;
 		strm.avail_in = in_to_consume;
 
 		/* run inflate() on input until output buffer not full */
-		decompress_block(chunk_size, &out, dest, &strm);
+		decompress_block(buffer_size, dest, &strm);
 	    } else {
 		// Done
 		(void)inflateEnd(&strm);
@@ -143,7 +142,7 @@ namespace zwrapper {
 class ParallelDecompressor {
 private:
     // Size for internal i/o buffers
-    unsigned int chunkSize{ 4_Ki };
+    size_t io_buffer_size;
 
     // Number of threads to use in file decompression
     size_t n_threads;
@@ -162,27 +161,28 @@ private:
 	using Reader = rapidgzip::ParallelGzipReader<rapidgzip::ChunkData,
 						     /* enable statistics */ false,
 						     /* show profile */ false>;
-	auto reader = std::make_unique<Reader>(std::move(inputFile), this->n_threads, this->chunkSize);
+	auto reader = std::make_unique<Reader>(std::move(inputFile), this->n_threads, this->io_buffer_size);
 	reader->read(writeAndCount);
     }
 
 public:
-    ParallelDecompressor(size_t _n_threads) {
+    ParallelDecompressor(size_t _n_threads, size_t _io_buffer_size = 131072) {
 	this->n_threads = _n_threads;
+	this->io_buffer_size = _io_buffer_size;
     }
 
     void decompress_stream(std::istream *in, std::ostream *out) const {
-	zwrapper::decompress_stream(this->chunkSize, in, out);
+	zwrapper::decompress_stream(this->io_buffer_size, in, out);
     }
 
     void decompress_file(const std::string &in_path, std::string &out_path) const {
         if (this->n_threads == 1) {
 	    std::ifstream in(in_path);
 	    if (out_path.empty()) {
-		zwrapper::decompress_stream(this->chunkSize, &in, &std::cout);
+		zwrapper::decompress_stream(this->io_buffer_size, &in, &std::cout);
 	    } else {
 		std::ofstream out(out_path);
-		zwrapper::decompress_stream(this->chunkSize, &in, &out);
+		zwrapper::decompress_stream(this->io_buffer_size, &in, &out);
 		out.close();
 	    }
 	    in.close();
