@@ -91,7 +91,6 @@ namespace zwrapper {
 	// Adapted from the zlib usage examples
 	// https://www.zlib.net/zlib_how.html
 	/* allocate inflate state */
-	buffer_size = (buffer_size > 262144 ? 262144 : buffer_size); // Limit the maximum buffer size (large values behave weirdly)
 	z_stream strm;
 	int ret = init_z_stream(&strm, 15+32);
 
@@ -101,39 +100,39 @@ namespace zwrapper {
 	while (source->good()) {
 	    std::basic_string<unsigned char> in(buffer_size, '-');
 	    /* decompress until deflate stream ends or end of file */
+	    size_t nbytes_available = 0;
+	    size_t nbytes_consumed = 0;
+	    source->read(reinterpret_cast<char*>(in.data()), buffer_size);
+	    nbytes_available = source->gcount();
+	    strm.avail_in = nbytes_available;
+	    if (source->fail() && !source->eof()) {
+		(void)inflateEnd(&strm);
+		return Z_ERRNO;
+	    }
+	    if (strm.avail_in == 0)
+		break;
+	    strm.next_in = in.data();
+	    unsigned char* next_to_consume = in.data();
 	    do {
-		source->read(reinterpret_cast<char*>(in.data()), buffer_size);
-		strm.avail_in = source->gcount();
-		if (source->fail() && !source->eof()) {
+		// Check how much buffer is left to consume
+		size_t in_left_to_consume = nbytes_available - nbytes_consumed;
+		next_to_consume = &in.data()[nbytes_consumed];
+		if (ret == Z_STREAM_END) {
+		    // Concatenated deflate blocks in the buffer:
+		    // need to reset the stream state
 		    (void)inflateEnd(&strm);
-		    return Z_ERRNO;
+		    ret = init_z_stream(&strm, 15+32);
+		    strm.next_in = next_to_consume;
+		    strm.avail_in = in_left_to_consume;
 		}
-		if (strm.avail_in == 0)
-		    break;
-		strm.next_in = in.data();
 
 		/* run inflate() on input until output buffer not full */
 		ret = decompress_block(buffer_size, dest, &strm);
-
-		// Part done when ret == Z_STREAM_END
-	    } while (ret != Z_STREAM_END);
-	    if (source->good()) {
-		// Probably reading a multipart file, keep going
-		// Previous inflate() may not have consumed the entire input buffer
-		int in_to_consume = buffer_size - (strm.next_in - &in.data()[0]); // Pointer arithmetic to determine amount of buffer left
-		unsigned char* header_start = &in.data()[buffer_size - strm.avail_in];
-		(void)inflateEnd(&strm);
-		ret = init_z_stream(&strm, 15+32);
-		strm.next_in = header_start;
-		strm.avail_in = in_to_consume;
-
-		/* run inflate() on input until output buffer not full */
-		decompress_block(buffer_size, dest, &strm);
-	    } else {
-		// Done
-		(void)inflateEnd(&strm);
-	    }
+		nbytes_consumed += strm.next_in - next_to_consume;
+	    } while (nbytes_consumed < nbytes_available);
 	}
+	// Done
+	(void)inflateEnd(&strm);
 
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
     }
