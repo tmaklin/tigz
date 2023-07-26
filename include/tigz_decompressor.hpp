@@ -86,27 +86,6 @@ namespace zwrapper {
 	return ret;
     }
 
-    int sync(const size_t buffer_size, const size_t nbytes_available, const size_t nbytes_consumed, std::basic_string<unsigned char> &in, std::ostream *dest, z_stream *strm_p, bool init_stream = true) {
-	// Finish inbuffer
-	int in_to_consume = nbytes_available - nbytes_consumed;
-	unsigned char* header_start = &in.data()[nbytes_consumed];
-	int ret;
-	if (init_stream) {
-	    (void)inflateEnd(strm_p);
-	    ret = init_z_stream(strm_p, 15+32);
-	    strm_p->next_in = header_start;
-	    strm_p->avail_in = in_to_consume;
-	}
-
-	/* run inflate() on input until output buffer not full */
-	ret = decompress_block(buffer_size, dest, strm_p);
-	if (strm_p->next_in - header_start < in_to_consume) {
-	    ret = sync(buffer_size, nbytes_available, nbytes_consumed + strm_p->next_in - header_start, in, dest, strm_p, ret == Z_STREAM_END);
-	}
-
-	return ret;
-    }
-
     // Default to zlib when decompressing from an unseekable stream
     int decompress_stream(size_t buffer_size, std::istream *source, std::ostream *dest) {
 	// Adapted from the zlib usage examples
@@ -123,27 +102,34 @@ namespace zwrapper {
 	    /* decompress until deflate stream ends or end of file */
 	    size_t nbytes_available = 0;
 	    size_t nbytes_consumed = 0;
+	    source->read(reinterpret_cast<char*>(in.data()), buffer_size);
+	    nbytes_available = source->gcount();
+	    strm.avail_in = nbytes_available;
+	    if (source->fail() && !source->eof()) {
+		(void)inflateEnd(&strm);
+		return Z_ERRNO;
+	    }
+	    if (strm.avail_in == 0)
+		break;
+	    strm.next_in = in.data();
+	    unsigned char* next_to_consume = in.data();
 	    do {
-		source->read(reinterpret_cast<char*>(in.data()), buffer_size);
-		nbytes_available = source->gcount();
-		strm.avail_in = nbytes_available;
-		if (source->fail() && !source->eof()) {
+		// Check how much buffer is left to consume
+		size_t in_left_to_consume = nbytes_available - nbytes_consumed;
+		next_to_consume = &in.data()[nbytes_consumed];
+		if (ret == Z_STREAM_END) {
+		    // Concatenated deflate blocks in the buffer:
+		    // need to reset the stream state
 		    (void)inflateEnd(&strm);
-		    return Z_ERRNO;
+		    ret = init_z_stream(&strm, 15+32);
+		    strm.next_in = next_to_consume;
+		    strm.avail_in = in_left_to_consume;
 		}
-		if (strm.avail_in == 0)
-		    break;
-		strm.next_in = in.data();
 
 		/* run inflate() on input until output buffer not full */
 		ret = decompress_block(buffer_size, dest, &strm);
-		nbytes_consumed = strm.next_in - in.data();
-
-		// Part done when ret == Z_STREAM_END
-	    } while (ret != Z_STREAM_END);
-	    if (nbytes_consumed < nbytes_available) {
-		sync(buffer_size, nbytes_available, nbytes_consumed, in, dest, &strm);
-	    }
+		nbytes_consumed += strm.next_in - next_to_consume;
+	    } while (nbytes_consumed < nbytes_available);
 	}
 	// Done
 	(void)inflateEnd(&strm);
