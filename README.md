@@ -28,7 +28,7 @@ make -j
 ```
 This will create the tigz executable in the `build/bin` directory.
 
-Optinally, use `make install` afterwards to install tigz. The
+Optionally, use `make install` afterwards to install tigz. The
 installation path can be modified by passing
 `-DCMAKE_INSTALL_PREFIX=/path/to/install/tigz/in` to cmake.
 
@@ -40,7 +40,7 @@ installation path can be modified by passing
 System `zlib` or `libdeflate` libraries can be supplied by specifying the path to the library files and the header files with
 ```
 cmake -DCMAKE_ZLIB_LIBRARY=/path/to/libz.so -DCMAKE_LIBDEFLATE_LIBRARY=/path/to/libdeflate.so \\
-      -DCMAKE_ZLIB_HEADERS=/path/to/zlib.h -DCMAKE_LIBDEFLATE_HEADERS=/path/to/libdeflate.h
+      -DCMAKE_ZLIB_HEADERS=/path/to/zlib/includes/ -DCMAKE_LIBDEFLATE_HEADERS=/path/to/libdeflate/includes/
 ```
 Preinstalled rapidgzip, BS::thread_pool, or cxxopts headers may be supplied similarly via cmake. These are header-only libraries so the library path is not needed.
 
