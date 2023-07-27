@@ -35,7 +35,8 @@
 #include <vector>
 #include <string>
 #include <exception>
-#include <thread>
+#include <istream>
+#include <ostream>
 #include <future>
 
 #include "libdeflate.h"
