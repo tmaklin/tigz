@@ -67,7 +67,7 @@ public:
 	this->pool.reset(this->n_threads);
 
 	if (_compression_level > 12) {
-	    throw std::invalid_argument("only levels 0..12 are allowed.");
+	    throw std::invalid_argument("tigz: only compression levels between 0..12 are allowed.");
 	}
 	this->compression_level = _compression_level;
 
@@ -99,12 +99,25 @@ public:
     ParallelCompressor& operator=(const ParallelCompressor&& other) = delete;
 
     void compress_stream(std::istream *in, std::ostream *out) {
+	if (!in->good()) {
+	    throw std::runtime_error("tigz: input is not readable.");
+	}
+	if (!out->good()) {
+	    throw std::runtime_error("tigz: output is not writable.");
+	}
+
 	std::vector<bool> input_was_read(this->n_threads, false);
 	std::vector<bool> stream_still_good(this->n_threads, true);
 	while (in->good()) {
 	    std::vector<std::future<size_t>> thread_futures(this->n_threads);
 	    for (size_t i = 0; i < this->n_threads; ++i) {
 		in->read(const_cast<char*>(this->in_buffers[i].data()), this->in_buffer_size);
+
+		// Check that the read succeeded
+		if (!in->fail() && !in->eof()) {
+		    throw std::runtime_error("tigz: reading " + std::to_string(this->in_buffer_size) + " bytes from input failed.");
+		}
+
 		input_was_read[i] = true;
 		stream_still_good[i] = in->good();
 		if (input_was_read[i]) {
@@ -120,6 +133,12 @@ public:
 		if (input_was_read[i]) {
 		    size_t thread_out_nbytes = thread_futures[i].get();
 		    out->write(this->out_buffers[i].data(), thread_out_nbytes);
+
+		    // Check that the write succeeded
+		    if (!out->fail()) {
+			throw std::runtime_error("tigz: writing " + std::to_string(thread_out_nbytes) + " bytes to output failed (thread: " + std::to_string(i) + ").");
+		    }
+
 		}
 		input_was_read[i] = false;
 	    }
