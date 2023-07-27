@@ -46,53 +46,19 @@
 
 namespace tigz {
 namespace zwrapper {
-    int init_z_stream(z_stream *strm_p, const size_t window_size = 0) {
-	strm_p->zalloc = Z_NULL;
-	strm_p->zfree = Z_NULL;
-	strm_p->opaque = Z_NULL;
-	strm_p->avail_in = 0;
-	strm_p->next_in = Z_NULL;
-	int ret = (window_size == 0 ? inflateInit(strm_p) : inflateInit2(strm_p, window_size));
-	return ret;
-    }
-
-    int decompress_block(const size_t buffer_size, std::ostream *dest, z_stream *strm_p) {
-	int ret; // zlib return code
-	std::basic_string<unsigned char> out(buffer_size, '-');
-
-	do {
-	    strm_p->avail_out = buffer_size;
-	    strm_p->next_out = out.data();
-	    ret = inflate(strm_p, Z_NO_FLUSH);
-	    switch (ret) {
-	    case Z_STREAM_ERROR:
-		(void)inflateEnd(strm_p);
-		return ret;
-	    case Z_NEED_DICT:
-		ret = Z_DATA_ERROR;     /* and fall through */
-	    case Z_DATA_ERROR:
-	    case Z_MEM_ERROR:
-		(void)inflateEnd(strm_p);
-		return ret;
-	    }
-	    size_t have = buffer_size - strm_p->avail_out;
-	    dest->write(reinterpret_cast<char*>(out.data()), have);
-	    if (dest->fail()) {
-		(void)inflateEnd(strm_p);
-		return Z_ERRNO;
-	    }
-	} while (strm_p->avail_out == 0);
-
-	return ret;
-    }
-
     // Default to zlib when decompressing from an unseekable stream
     int decompress_stream(size_t buffer_size, std::istream *source, std::ostream *dest) {
 	// Adapted from the zlib usage examples
 	// https://www.zlib.net/zlib_how.html
 	/* allocate inflate state */
 	z_stream strm;
-	int ret = init_z_stream(&strm, 15+32);
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+	strm.avail_in = 0;
+	strm.next_in = Z_NULL;
+	size_t window_size = 15+32;
+	int ret = (window_size == 0 ? inflateInit(&strm) : inflateInit2(&strm, window_size));
 
 	if (ret != Z_OK)
 	    return ret;
@@ -121,13 +87,41 @@ namespace zwrapper {
 		    // Concatenated deflate blocks in the buffer:
 		    // need to reset the stream state
 		    (void)inflateEnd(&strm);
-		    ret = init_z_stream(&strm, 15+32);
+		    strm.zalloc = Z_NULL;
+		    strm.zfree = Z_NULL;
+		    strm.opaque = Z_NULL;
+		    strm.avail_in = 0;
+		    strm.next_in = Z_NULL;
+		    ret = (window_size == 0 ? inflateInit(&strm) : inflateInit2(&strm, window_size));
 		    strm.next_in = next_to_consume;
 		    strm.avail_in = in_left_to_consume;
 		}
 
-		/* run inflate() on input until output buffer not full */
-		ret = decompress_block(buffer_size, dest, &strm);
+		/* run inflate() on input until output buffer full */
+		std::basic_string<unsigned char> out(buffer_size, '-');
+		do {
+		    strm.avail_out = buffer_size;
+		    strm.next_out = out.data();
+		    ret = inflate(&strm, Z_NO_FLUSH);
+		    switch (ret) {
+		    case Z_STREAM_ERROR:
+			(void)inflateEnd(&strm);
+			return ret;
+		    case Z_NEED_DICT:
+			ret = Z_DATA_ERROR;     /* and fall through */
+		    case Z_DATA_ERROR:
+		    case Z_MEM_ERROR:
+			(void)inflateEnd(&strm);
+			return ret;
+		    }
+		    size_t have = buffer_size - strm.avail_out;
+		    dest->write(reinterpret_cast<char*>(out.data()), have);
+		    if (dest->fail()) {
+			(void)inflateEnd(&strm);
+			return Z_ERRNO;
+		    }
+		} while (strm.avail_out == 0);
+
 		nbytes_consumed += strm.next_in - next_to_consume;
 	    } while (nbytes_consumed < nbytes_available);
 	}
