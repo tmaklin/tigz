@@ -43,6 +43,79 @@
 #include "BS_thread_pool.hpp"
 
 namespace tigz {
+class zlib_exception : public std::exception {
+private:
+    // Store the error message
+    std::string msg;
+
+protected:
+    // Initialize error message from inherited class
+    void init(const std::string &_msg) {
+	this->msg = "tigz: " + _msg;
+    }
+
+public:
+    // Message constructor
+    zlib_exception() = default;
+
+    zlib_exception(const std::string &_msg) { this->init(_msg); }
+
+public:
+    // Retrieve the message
+    const char* what() const noexcept { return this->msg.c_str(); }
+};
+
+class zlib_init_exception : public zlib_exception {
+private:
+    std::string msg;
+public:
+    // Message constructor
+    zlib_init_exception(const z_stream &strm, const int z_return_value) {
+	switch (z_return_value) {
+	case Z_MEM_ERROR:
+	    this->init(std::string("Z_MEM_ERROR: not enough memory."));
+	    break;
+	case Z_STREAM_ERROR:
+	    this->init(std::string("Z_STREAM_ERROR: " + (strm.msg != NULL ? std::string(strm.msg) : "unspecified error.")));
+	    break;
+	case Z_VERSION_ERROR:
+	    this->init(std::string("Z_VERSION_ERROR: zlib library version is incompatible with the version assumed by the caller."));
+	    break;
+	default:
+	    this->init(std::string("Error in initializing z_stream object."));
+	}
+    };
+
+};
+
+class zlib_inflate_exception : public zlib_exception {
+private:
+    std::string msg;
+public:
+    // Message constructor
+    zlib_inflate_exception(const z_stream &strm, const size_t error_position, const int z_return_value) {
+	switch (z_return_value) {
+	case Z_NEED_DICT:
+	    this->init(std::string("Z_NEED_DICT: preset dictionary needed at input position" + std::to_string(error_position) + "."));
+	    break;
+	case Z_DATA_ERROR:
+	    this->init(std::string("Z_DATA_ERROR: corrupted input" + (strm.msg != NULL ? " ( " + std::string(strm.msg) + ")" : ".")));
+	    break;
+	case Z_STREAM_ERROR:
+	    this->init(std::string("Z_STREAM_ERROR: stream structure is inconsistent."));
+	    break;
+	case Z_MEM_ERROR:
+	    this->init(std::string("Z_MEM_ERROR: not enough memory."));
+	    break;
+	case Z_BUF_ERROR:
+	    this->init(std::string("Z_BUF_ERROR: progress not possible."));
+	    break;
+	default:
+	    this->init(std::string("Error in inflating input data at position " + std::to_string(error_position) + "."));
+	}
+    };
+};
+
 class ParallelDecompressor {
 private:
     // Size for internal i/o buffers
@@ -54,7 +127,7 @@ private:
     // Decompress from `source` to `dest` with a single thread.
     // This function is used for unseekable streams since they
     // cannot be decompressed in parallel.
-    int decompress_with_single_thread(std::istream *source, std::ostream *dest) const {
+    void decompress_with_single_thread(std::istream *source, std::ostream *dest) const {
 	// Input:
 	//   `source`: deflate/zlib/gzip format compressed binary data.
 	//
@@ -79,8 +152,10 @@ private:
 	// Init stream state
 	int ret = (window_size == 0 ? inflateInit(&strm) : inflateInit2(&strm, window_size));
 
-	if (ret != Z_OK)
-	    return ret;
+	// Throw exceptions if initialization failed
+	if (ret != Z_OK) {
+	    throw zlib_init_exception(strm, ret);
+	}
 
 	// Decompress until stream ends
 	while (source->good()) {
@@ -92,15 +167,15 @@ private:
 	    std::basic_string<unsigned char> in(this->io_buffer_size, '-');
 	    source->read(reinterpret_cast<char*>(in.data()), this->io_buffer_size);
 
-	    // If at end of stream the number of bytes read will be less than total buffer size
-	    nbytes_available = source->gcount();
-	    strm.avail_in = nbytes_available;
-
 	    // Check that the read succeeded
 	    if (source->fail() && !source->eof()) {
 		(void)inflateEnd(&strm);
-		return Z_ERRNO;
+		throw std::runtime_error("tigz: reading " + std::to_string(this->io_buffer_size) + " bytes from input failed.");
 	    }
+
+	    // If at end of stream the number of bytes read will be less than total buffer size
+	    nbytes_available = source->gcount();
+	    strm.avail_in = nbytes_available;
 
 	    // Nothing left to read
 	    if (strm.avail_in == 0)
@@ -126,6 +201,11 @@ private:
 		    strm.next_in = Z_NULL;
 		    ret = (window_size == 0 ? inflateInit(&strm) : inflateInit2(&strm, window_size));
 
+		    // Throw exceptions if initialization failed
+		    if (ret != Z_OK) {
+			throw zlib_init_exception(strm, ret);
+		    }
+
 		    // Update stream input state
 		    strm.next_in = next_to_consume;
 		    strm.avail_in = in_left_to_consume;
@@ -139,18 +219,9 @@ private:
 		    strm.next_out = out.data();
 		    ret = inflate(&strm, Z_NO_FLUSH); // Inflate `in`
 
-		    // Check that inflate() succeeded
-		    // TODO exceptions
-		    switch (ret) {
-		    case Z_STREAM_ERROR:
-			(void)inflateEnd(&strm);
-			return ret;
-		    case Z_NEED_DICT:
-			ret = Z_DATA_ERROR;     /* and fall through */
-		    case Z_DATA_ERROR:
-		    case Z_MEM_ERROR:
-			(void)inflateEnd(&strm);
-			return ret;
+		    // Check return value from inflate and throw exceptions if needed
+		    if (ret != Z_OK && ret != Z_STREAM_END) {
+			throw zlib_inflate_exception(strm, nbytes_consumed + (strm.next_in - next_to_consume), ret);
 		    }
 
 		    // Check size of the inflated output and write to `dest`
@@ -160,7 +231,7 @@ private:
 		    // Check that the write succeeded
 		    if (dest->fail()) {
 			(void)inflateEnd(&strm);
-			return Z_ERRNO;
+			throw std::runtime_error("tigz: writing " + std::to_string(have) + " bytes to output failed.");
 		    }
 		} while (strm.avail_out == 0);
 
@@ -171,8 +242,10 @@ private:
 	// Done
 	(void)inflateEnd(&strm);
 
-	// TODO throw exceptions instead of using return values
-	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+	// Check that the stream ended with a deflate/zlib/gzip footer
+	if (ret != Z_STREAM_END) {
+	    throw zlib_exception("Z_DATA_ERROR: Input stream did not end with a valid deflate/zlib/gzip footer.");
+	}
     }
 
     // Multithreaded decompression with rapidgzip
@@ -221,6 +294,13 @@ public:
 	//   `out`: stream to write uncompressed data to.
 
 	// Streaming decompression uses only a single thread.
+	if (!in->good()) {
+	    throw std::runtime_error("tigz: input is not readable.");
+	}
+	if (!out->good()) {
+	    throw std::runtime_error("tigz: output is not writable.");
+	}
+
 	this->decompress_with_single_thread(in, out);
     }
 
@@ -236,19 +316,30 @@ public:
 	    // This is about 10-25% faster than single-threader rapidgzip.
 
 	    std::ifstream in(in_path);
+	    if (!in.good()) {
+		throw std::runtime_error("tigz: can't read from input file: " + in_path + ".");
+	    }
+
 	    if (out_path.empty()) {
 		// Write to std::cout if no output file is supplied.
 		this->decompress_with_single_thread(&in, &std::cout);
 	    } else {
 		// Open and write to the output file.
-		// TODO check that the file is writable.
 		std::ofstream out(out_path);
+		if (!out.good()) {
+		    throw std::runtime_error("tigz: can't write to output file: " + out_path + ".");
+		}
+
 		this->decompress_with_single_thread(&in, &out);
 		out.close();
 	    }
 	    in.close();
         } else {
 	    // Decompress with multiple threads using rapidgzip
+
+	    if (in_path.empty()) {
+		throw std::runtime_error("tigz: decompressing data from stdin with multiple threads is not supported.");
+	    }
 
 	    // This would open stdin if in_path is empty but that is not allowed (use decompress_stream).
 	    auto inputFile = openFileOrStdin(in_path);
