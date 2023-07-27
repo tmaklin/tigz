@@ -45,47 +45,81 @@
 #include "BS_thread_pool.hpp"
 
 namespace tigz {
-namespace zwrapper {
-    // Default to zlib when decompressing from an unseekable stream
-    int decompress_stream(size_t buffer_size, std::istream *source, std::ostream *dest) {
-	// Adapted from the zlib usage examples
-	// https://www.zlib.net/zlib_how.html
-	/* allocate inflate state */
+class ParallelDecompressor {
+private:
+    // Size for internal i/o buffers
+    size_t io_buffer_size;
+
+    // Number of threads to use in file decompression
+    size_t n_threads;
+
+    // Decompress from `source` to `dest` with a single thread.
+    // This function is used for unseekable streams since they
+    // cannot be decompressed in parallel.
+    int decompress_with_single_thread(std::istream *source, std::ostream *dest) const {
+	// Input:
+	//   `source`: deflate/zlib/gzip format compressed binary data.
+	//
+	// Output:
+	//   `dest`: writable stream for uncompressed output.
+	//
+	// Return value:
+	//    Z_OK: if decompression ended at a deflate/zlib/gzip footer
+	//    Z_DATA_ERROR: if decompression ended prematurely.
+
+	// Allocate inflate state
 	z_stream strm;
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
 	strm.avail_in = 0;
 	strm.next_in = Z_NULL;
+
+	// deflate window size
 	size_t window_size = 15+32;
+
+	// Init stream state
 	int ret = (window_size == 0 ? inflateInit(&strm) : inflateInit2(&strm, window_size));
 
 	if (ret != Z_OK)
 	    return ret;
 
+	// Decompress until stream ends
 	while (source->good()) {
-	    std::basic_string<unsigned char> in(buffer_size, '-');
-	    /* decompress until deflate stream ends or end of file */
+	    // Keep track of total compressed bytes available and processed
 	    size_t nbytes_available = 0;
 	    size_t nbytes_consumed = 0;
-	    source->read(reinterpret_cast<char*>(in.data()), buffer_size);
+
+	    // Read `io_buffer_size` bytes into buffer
+	    std::basic_string<unsigned char> in(this->io_buffer_size, '-');
+	    source->read(reinterpret_cast<char*>(in.data()), this->io_buffer_size);
+
+	    // If at end of stream the number of bytes read will be less than total buffer size
 	    nbytes_available = source->gcount();
 	    strm.avail_in = nbytes_available;
+
+	    // Check that the read succeeded
 	    if (source->fail() && !source->eof()) {
 		(void)inflateEnd(&strm);
 		return Z_ERRNO;
 	    }
+
+	    // Nothing left to read
 	    if (strm.avail_in == 0)
 		break;
+
+	    // Pointers to first byte in `in`
 	    strm.next_in = in.data();
 	    unsigned char* next_to_consume = in.data();
 	    do {
-		// Check how much buffer is left to consume
+		// Check how much buffer there is left to consume
 		size_t in_left_to_consume = nbytes_available - nbytes_consumed;
-		next_to_consume = &in.data()[nbytes_consumed];
+		next_to_consume = &in.data()[nbytes_consumed]; // Already consumed `nbytes_consumed` from `in`
+
+		// Check if the previous inflate() ended at concatenated deflate block boundary
 		if (ret == Z_STREAM_END) {
-		    // Concatenated deflate blocks in the buffer:
-		    // need to reset the stream state
+		    // Buffer contains another deflate block starting at `next_to_consume`:
+		    // need to reset the stream state.
 		    (void)inflateEnd(&strm);
 		    strm.zalloc = Z_NULL;
 		    strm.zfree = Z_NULL;
@@ -93,16 +127,22 @@ namespace zwrapper {
 		    strm.avail_in = 0;
 		    strm.next_in = Z_NULL;
 		    ret = (window_size == 0 ? inflateInit(&strm) : inflateInit2(&strm, window_size));
+
+		    // Update stream input state
 		    strm.next_in = next_to_consume;
 		    strm.avail_in = in_left_to_consume;
 		}
 
-		/* run inflate() on input until output buffer full */
-		std::basic_string<unsigned char> out(buffer_size, '-');
+		// Inflate `in` until outbuffer `out` is not full (= `in` has nothing left to inflate)
+		std::basic_string<unsigned char> out(this->io_buffer_size, '-');
 		do {
-		    strm.avail_out = buffer_size;
+		    // Update stream output state
+		    strm.avail_out = this->io_buffer_size;
 		    strm.next_out = out.data();
-		    ret = inflate(&strm, Z_NO_FLUSH);
+		    ret = inflate(&strm, Z_NO_FLUSH); // Inflate `in`
+
+		    // Check that inflate() succeeded
+		    // TODO exceptions
 		    switch (ret) {
 		    case Z_STREAM_ERROR:
 			(void)inflateEnd(&strm);
@@ -114,31 +154,28 @@ namespace zwrapper {
 			(void)inflateEnd(&strm);
 			return ret;
 		    }
-		    size_t have = buffer_size - strm.avail_out;
+
+		    // Check size of the inflated output and write to `dest`
+		    size_t have = this->io_buffer_size - strm.avail_out;
 		    dest->write(reinterpret_cast<char*>(out.data()), have);
+
+		    // Check that the write succeeded
 		    if (dest->fail()) {
 			(void)inflateEnd(&strm);
 			return Z_ERRNO;
 		    }
 		} while (strm.avail_out == 0);
 
+		// Update nbytes consumed
 		nbytes_consumed += strm.next_in - next_to_consume;
 	    } while (nbytes_consumed < nbytes_available);
 	}
 	// Done
 	(void)inflateEnd(&strm);
 
+	// TODO throw exceptions instead of using return values
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
     }
-}
-
-class ParallelDecompressor {
-private:
-    // Size for internal i/o buffers
-    size_t io_buffer_size;
-
-    // Number of threads to use in file decompression
-    size_t n_threads;
 
     // Multithreaded decompression with rapidgzip
     void decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
@@ -165,17 +202,17 @@ public:
     }
 
     void decompress_stream(std::istream *in, std::ostream *out) const {
-	zwrapper::decompress_stream(this->io_buffer_size, in, out);
+	this->decompress_with_single_thread(in, out);
     }
 
     void decompress_file(const std::string &in_path, std::string &out_path) const {
         if (this->n_threads == 1) {
 	    std::ifstream in(in_path);
 	    if (out_path.empty()) {
-		zwrapper::decompress_stream(this->io_buffer_size, &in, &std::cout);
+		this->decompress_with_single_thread(&in, &std::cout);
 	    } else {
 		std::ofstream out(out_path);
-		zwrapper::decompress_stream(this->io_buffer_size, &in, &out);
+		this->decompress_with_single_thread(&in, &out);
 		out.close();
 	    }
 	    in.close();
