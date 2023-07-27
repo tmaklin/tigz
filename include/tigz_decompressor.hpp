@@ -32,13 +32,11 @@
 #define TIGZ_TIGZ_DECOMPRESSOR_HPP
 
 #include <cstddef>
-#include <vector>
+#include <istream>
+#include <ostream>
 #include <string>
-#include <exception>
-#include <thread>
-#include <future>
-#include <cmath>
-#include <algorithm>
+#include <memory>
+#include <fstream>
 
 #include "zlib.h"
 #include "rapidgzip.hpp"
