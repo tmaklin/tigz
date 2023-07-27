@@ -178,7 +178,17 @@ private:
     }
 
     // Multithreaded decompression with rapidgzip
+    // Use this function for reading from a file and decompressing to either a file or stdout.
+    // Decompression to stdout is enabled by supplying std::make_unique<OutputFile>(outpath)
+    // as the argument `output_file` with a empty string in `outpath`.
     void decompress_with_many_threads(UniqueFileReader &inputFile, std::unique_ptr<OutputFile> &output_file) const {
+	// Input:
+	//   `input file`: created from a string `in_path` with openFileOrStdin(in_path).
+	// Output:
+	//   `output_file`: created from string `out_path` with std::make_unique<OutputFile>(out_path).
+
+	// Modified from https://github.com/mxmlnkn/rapidgzip/blob/635fc438b2458dc432c458324a79f2e242b9e52f/src/tools/rapidgzip.cpp
+	// at lines 394-411
 	const auto outputFileDescriptor = output_file ? output_file->fd() : -1;
 	const auto writeAndCount =
 	    [outputFileDescriptor, this]
@@ -196,32 +206,60 @@ private:
     }
 
 public:
+    // Default constructor that sets the parallelism and buffer size
     ParallelDecompressor(size_t _n_threads, size_t _io_buffer_size = 131072) {
+	// Input:
+	//   `_n_threads`: max. number of threads to use.
+	//   `_io_buffer_size`: i/o buffer size in bytse per thread (default 128KiB).
+
 	this->n_threads = _n_threads;
 	this->io_buffer_size = _io_buffer_size;
     }
 
+    // Decompress from open stream `in` into open stream `out` with a single thread.
     void decompress_stream(std::istream *in, std::ostream *out) const {
+	// Input:
+	//   `in`: stream to read binary deflate/zlib/gzip data from.
+	//   `out`: stream to write uncompressed data to.
+
+	// Streaming decompression uses only a single thread.
 	this->decompress_with_single_thread(in, out);
     }
 
+    // Decompress from file `in_path` to file `out_path` (empty for stdout);
+    // decompresses with multiple threads if this->n_threads > 1.
     void decompress_file(const std::string &in_path, std::string &out_path) const {
+	// Input:
+	//   `in_path`: path to file containing the compressed data (can't be empty).
+	//   `out_path`: file to write uncompressed data in (empty string = write to stdout). 
+
         if (this->n_threads == 1) {
+	    // Decompress with zlib-ng if parallelism isn't enabled.
+	    // This is about 10-25% faster than single-threader rapidgzip.
+
 	    std::ifstream in(in_path);
 	    if (out_path.empty()) {
+		// Write to std::cout if no output file is supplied.
 		this->decompress_with_single_thread(&in, &std::cout);
 	    } else {
+		// Open and write to the output file.
+		// TODO check that the file is writable.
 		std::ofstream out(out_path);
 		this->decompress_with_single_thread(&in, &out);
 		out.close();
 	    }
 	    in.close();
         } else {
+	    // Decompress with multiple threads using rapidgzip
+
+	    // This would open stdin if in_path is empty but that is not allowed (use decompress_stream).
 	    auto inputFile = openFileOrStdin(in_path);
 
+	    // Open output file or stdout. This is the syntax rapidgzip requires
 	    std::unique_ptr<OutputFile> outputFile;
 	    outputFile = std::make_unique<OutputFile>(out_path); // Opens cout if out_path is empty
 
+	    // Run rapidgzip parallel decompression
 	    this->decompress_with_many_threads(inputFile, outputFile);
         }
     }
