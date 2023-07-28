@@ -145,7 +145,7 @@ public:
 		in->read(const_cast<char*>(this->in_buffers[i].data()), this->in_buffer_size);
 
 		// Check that the read succeeded
-		if (!in->fail() && !in->eof()) {
+		if (in->fail() && !in->eof()) {
 		    throw std::runtime_error("tigz: reading " + std::to_string(this->in_buffer_size) + " bytes from input failed.");
 		}
 
@@ -177,7 +177,7 @@ public:
 		    out->write(this->out_buffers[i].data(), thread_out_nbytes);
 
 		    // Check that the write succeeded
-		    if (!out->fail()) {
+		    if (out->fail()) {
 			throw std::runtime_error("tigz: writing " + std::to_string(thread_out_nbytes) + " bytes to output failed (thread: " + std::to_string(i) + ").");
 		    }
 
