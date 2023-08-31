@@ -10,7 +10,6 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release) ## Build Release by default
 endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wpedantic -g")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
 ## Rapidgzip doesn't compile without this
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fconstexpr-ops-limit=67108864")
@@ -22,11 +21,23 @@ else()
   set(CMAKE_WITH_NATIVE_INSTRUCTIONS 0)
 endif()
 
+if(CMAKE_PGO_GENERATE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-generate")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate")
+endif()
+
+if(CMAKE_PGO_USE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-use -fprofile-correction")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use -fprofile-correction")
+endif()
+
 ## Link time optimization
 if(CMAKE_WITH_FLTO)
   cmake_policy(SET CMP0069 NEW)
   set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION 1)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
 endif()
 
 cmake_policy(SET CMP0097 NEW)
@@ -73,7 +84,16 @@ else()
     SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate"
     BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate-download/libdeflate-download-prefix/src/libdeflate-download-build"
     BUILD_IN_SOURCE   0
-    CONFIGURE_COMMAND ""
+    CMAKE_ARGS       -D LIBDEFLATE_BUILD_SHARED_LIB=OFF
+                     -D LIBDEFLATE_BUILD_STATIC_LIB=ON
+		     -D LIBDEFLATE_BUILD_GZIP=OFF
+		     -D LIBDEFLATE_BUILD_TESTS=OFF
+		     -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
+		     -D LIBDEFLATE_ZLIB_SUPPORT=OFF
+		     -D LIBDEFLATE_GZIP_SUPPORT=ON
+		     -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
+		     -D "CMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
+		     -D "CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
     INSTALL_COMMAND    ""
     TEST_COMMAND       ""
     UPDATE_COMMAND     ""
@@ -107,7 +127,14 @@ else()
     SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng"
     BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng-download/zlibng-download-prefix/src/zlibng-download-build"
     BUILD_IN_SOURCE   0
-    CONFIGURE_COMMAND ""
+    CMAKE_ARGS      -D ZLIB_COMPAT=ON
+		    -D ZLIB_ENABLE_TESTS=OFF
+		    -D ZLIBNG_ENABLE_TESTS=OFF
+		    -D WITH_GTEST=OFF
+		    -D BUILD_SHARED_LIBS=0
+		    -D WITH_NATIVE_INSTRUCTIONS=$CMAKE_WITH_NATIVE_INSTRUCTIONS
+		    -D "CMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
+		    -D "CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
     INSTALL_COMMAND   ""
     TEST_COMMAND      ""
     UPDATE_COMMAND    "")
