@@ -270,8 +270,7 @@ private:
 	    };
 
 	using Reader = rapidgzip::ParallelGzipReader<rapidgzip::ChunkData,
-						     /* enable statistics */ false,
-						     /* show profile */ false>;
+						     /* enable statistics */ false>;
 	auto reader = std::make_unique<Reader>(std::move(inputFile), this->n_threads, this->io_buffer_size);
 	reader->read(writeAndCount);
     }

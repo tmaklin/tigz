@@ -5,7 +5,7 @@ include(ExternalProject)
 
 ExternalProject_Add(rapidgzip-download
   GIT_REPOSITORY		https://github.com/mxmlnkn/rapidgzip
-  GIT_TAG			635fc438b2458dc432c458324a79f2e242b9e52f
+  GIT_TAG			rapidgzip-v0.10.1
   GIT_SUBMODULES		""
   GIT_SUBMODULES_RECURSE	0
   SOURCE_DIR			"${CMAKE_CURRENT_BINARY_DIR}/external/rapidgzip"
