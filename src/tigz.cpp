@@ -55,7 +55,7 @@ bool parse_args(int argc, char* argv[], cxxopts::Options &options) {
 	("f,force", "Force overwrite output file(s).", cxxopts::value<bool>()->default_value("false"))
 	("c,stdout", "Write to standard out, keep files.", cxxopts::value<bool>()->default_value("false"))
 	("T,threads", "Use `arg` threads, 0 = all available.", cxxopts::value<size_t>()->default_value("1"))
-	("b,block-size", "i/o buffer sizes per thread in KiB.", cxxopts::value<size_t>()->default_value("128"))
+	("b,block-size", "i/o buffer sizes per thread in KiB.", cxxopts::value<size_t>()->default_value("1024"))
 	("h,help", "Print this message and quit.", cxxopts::value<bool>()->default_value("false"))
 	("V,version", "Print the version and quit.", cxxopts::value<bool>()->default_value("false"))
 	("filenames", "Input files as positional arguments", cxxopts::value<std::vector<std::string>>()->default_value(""));
