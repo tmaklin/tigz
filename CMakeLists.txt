@@ -10,8 +10,8 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release) ## Build Release by default
 endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wpedantic -g")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ffunction-sections -fdata-sections -Wl,-gc-sections -s -Wl,--strip-all")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffunction-sections -fdata-sections -Wl,-gc-sections -s -Wl,--strip-all")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ffunction-sections -fdata-sections -Wl,-gc-sections -s -Wl,--strip-all -fmerge-all-constants -Wl,-z,norelro -fPIE -fPIC -DNDEBUG -fno-exceptions")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffunction-sections -fdata-sections -Wl,-gc-sections -s -Wl,--strip-all -fmerge-all-constants -Wl,-z,norelro -fPIE -fPIC")
 
 ## Rapidgzip doesn't compile without this
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fconstexpr-ops-limit=67108864")
@@ -23,23 +23,30 @@ else()
   set(CMAKE_WITH_NATIVE_INSTRUCTIONS 0)
 endif()
 
-if(CMAKE_PGO_GENERATE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-generate")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate")
+if(CMAKE_PGO_GENERATE AND NOT CMAKE_PGO_USE)
+  if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-instr-generate -fcoverage-mapping")
+  else()
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-generate")
+  endif()
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-generate -fcoverage-mapping")
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-generate")
+  endif()
 endif()
 
 if(CMAKE_PGO_USE)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-use -fprofile-correction")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use -fprofile-correction")
-endif()
-
-## Link time optimization
-if(CMAKE_WITH_FLTO)
-  cmake_policy(SET CMP0069 NEW)
-  set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION 1)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -flto")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
+  if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-instr-use=${CMAKE_CURRENT_BINARY_DIR}/default.profdata -fprofile-correction")
+  else()
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-use -fprofile-correction")
+  endif()
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-instr-use=${CMAKE_CURRENT_BINARY_DIR}/default.profdata -fprofile-correction")
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-use -fprofile-correction")
+  endif()
 endif()
 
 cmake_policy(SET CMP0097 NEW)
@@ -69,40 +76,27 @@ if (DEFINED CMAKE_LIBDEFLATE_HEADERS AND DEFINED CMAKE_LIBDEFLATE_LIBRARY)
   message(STATUS "libdeflate headers provided in: ${CMAKE_LIBDEFLATE_HEADERS}")
   message(STATUS "libdeflate library provided in: ${CMAKE_LIBDEFLATE_LIBRARY}")
 else()
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-libdeflate.txt.in ${CMAKE_BINARY_DIR}/external/libdeflate-download/CMakeLists.txt)
-  execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/libdeflate-download )
-  if(result)
-    message(FATAL_ERROR "CMake step for libdeflate failed: ${result}")
-  endif()
-  execute_process(COMMAND ${CMAKE_COMMAND} --build .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/libdeflate-download )
-  if(result)
-    message(FATAL_ERROR "Build step for libdeflate failed: ${result}")
-  endif()
-  ExternalProject_Add(libdeflate
-    SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate"
-    BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate-download/libdeflate-download-prefix/src/libdeflate-download-build"
-    BUILD_IN_SOURCE   0
-    CMAKE_ARGS       -D LIBDEFLATE_BUILD_SHARED_LIB=OFF
-                     -D LIBDEFLATE_BUILD_STATIC_LIB=ON
-		     -D LIBDEFLATE_BUILD_GZIP=OFF
-		     -D LIBDEFLATE_BUILD_TESTS=OFF
-		     -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
-		     -D LIBDEFLATE_ZLIB_SUPPORT=OFF
-		     -D LIBDEFLATE_GZIP_SUPPORT=ON
-		     -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
-		     -D "CMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
-		     -D "CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
-    INSTALL_COMMAND    ""
-    TEST_COMMAND       ""
-    UPDATE_COMMAND     ""
-    )
+ExternalProject_Add(libdeflate
+  GIT_REPOSITORY    https://github.com/ebiggers/libdeflate
+  GIT_TAG           v1.18
+  PREFIX            "external"
+  BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate"
+  BUILD_IN_SOURCE   0
+  CMAKE_ARGS	    -D LIBDEFLATE_BUILD_SHARED_LIB=OFF
+  		    -D LIBDEFLATE_BUILD_STATIC_LIB=ON
+  		    -D LIBDEFLATE_BUILD_GZIP=OFF
+		    -D LIBDEFLATE_BUILD_TESTS=OFF
+		    -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
+		    -D LIBDEFLATE_ZLIB_SUPPORT=OFF
+		    -D LIBDEFLATE_GZIP_SUPPORT=ON
+		    -D LIBDEFLATE_DECOMPRESSION_SUPPORT=OFF
+		    -D "CMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
+		    -D "CMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+  INSTALL_COMMAND   cp ${CMAKE_CURRENT_BINARY_DIR}/external/src/libdeflate/libdeflate.h ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate/
+  )
   add_dependencies(tigz libdeflate)
   set(CMAKE_LIBDEFLATE_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate)
-  set(CMAKE_LIBDEFLATE_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate-download/libdeflate-download-prefix/src/libdeflate-download-build/libdeflate.a)
+  set(CMAKE_LIBDEFLATE_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/libdeflate/libdeflate.a)
 endif()
 include_directories(${CMAKE_LIBDEFLATE_HEADERS})
 target_link_libraries(tigz ${CMAKE_LIBDEFLATE_LIBRARY})
@@ -112,37 +106,27 @@ if (DEFINED CMAKE_ZLIB_HEADERS AND DEFINED CMAKE_ZLIB_LIBRARY)
   message(STATUS "zlib headers provided in: ${CMAKE_ZLIB_HEADERS}")
   message(STATUS "zlib library provided in: ${CMAKE_ZLIB_LIBRARY}")
 else()
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-zlibng.txt.in ${CMAKE_BINARY_DIR}/external/zlib-ng-download/CMakeLists.txt)
-  execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/zlib-ng-download )
-  if(result)
-    message(FATAL_ERROR "CMake step for zlib-ng failed: ${result}")
-  endif()
-  execute_process(COMMAND ${CMAKE_COMMAND} --build .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/zlib-ng-download )
-  if(result)
-    message(FATAL_ERROR "Build step for zlib-ng failed: ${result}")
-  endif()
-  ExternalProject_Add(zlibng
-    SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng"
-    BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng-download/zlibng-download-prefix/src/zlibng-download-build"
+  ExternalProject_Add(zlib-ng
+    GIT_REPOSITORY    https://github.com/zlib-ng/zlib-ng
+    GIT_TAG           2.1.3
+    PREFIX            "external"
+    BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng"
     BUILD_IN_SOURCE   0
     CMAKE_ARGS      -D ZLIB_COMPAT=ON
 		    -D ZLIB_ENABLE_TESTS=OFF
 		    -D ZLIBNG_ENABLE_TESTS=OFF
 		    -D WITH_GTEST=OFF
 		    -D BUILD_SHARED_LIBS=0
-		    -D WITH_NATIVE_INSTRUCTIONS=$CMAKE_WITH_NATIVE_INSTRUCTIONS
+		    -D WITH_NATIVE_INSTRUCTIONS=${CMAKE_WITH_NATIVE_INSTRUCTIONS}
+		    -D WITH_OPTIM=ON
+		    -D WITH_NEW_STRATEGIES=ON
 		    -D "CMAKE_C_FLAGS=${CMAKE_C_FLAGS}"
-		    -D "CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
+		    -D "CMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
     INSTALL_COMMAND   ""
-    TEST_COMMAND      ""
-    UPDATE_COMMAND    "")
-  add_dependencies(tigz zlibng)
-  set(CMAKE_ZLIB_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/zlibng-prefix/src/zlibng-build)
-  set(CMAKE_ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng-download/zlibng-download-prefix/src/zlibng-download-build/libz.a)
+    )
+  add_dependencies(tigz zlib-ng)
+  set(CMAKE_ZLIB_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng)
+  set(CMAKE_ZLIB_LIBRARY ${CMAKE_CURRENT_BINARY_DIR}/external/zlib-ng/libz.a)
 endif()
 include_directories(${CMAKE_ZLIB_HEADERS})
 target_link_libraries(tigz ${CMAKE_ZLIB_LIBRARY})
@@ -151,19 +135,17 @@ target_link_libraries(tigz ${CMAKE_ZLIB_LIBRARY})
 if (DEFINED CMAKE_CXXOPTS_HEADERS)
   message(STATUS "cxxopts headers provided in: ${CMAKE_CXXOPTS_HEADERS}")
 else()
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-cxxopts.txt.in ${CMAKE_BINARY_DIR}/external/cxxopts-download/CMakeLists.txt)
-  execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/cxxopts-download )
-  if(result)
-    message(FATAL_ERROR "CMake step for cxxopts failed: ${result}")
-  endif()
-  execute_process(COMMAND ${CMAKE_COMMAND} --build .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/cxxopts-download )
-  if(result)
-    message(FATAL_ERROR "Build step for cxxopts failed: ${result}")
-  endif()
+  ExternalProject_Add(cxxopts
+    GIT_REPOSITORY    https://github.com/jarro2783/cxxopts
+    GIT_TAG           v3.1.1
+    PREFIX            "external"
+    SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/cxxopts"
+    BUILD_IN_SOURCE   1
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND     ""
+    INSTALL_COMMAND   ""
+    )
+  add_dependencies(tigz cxxopts)
   set(CMAKE_CXXOPTS_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/cxxopts/include)
 endif()
 include_directories(${CMAKE_CXXOPTS_HEADERS})
@@ -172,19 +154,19 @@ include_directories(${CMAKE_CXXOPTS_HEADERS})
 if (DEFINED CMAKE_RAPIDGZIP_HEADERS)
   message(STATUS "rapidgzip headers provided in: ${CMAKE_RAPIDGZIP_HEADERS}")
 else()
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-rapidgzip.txt.in ${CMAKE_BINARY_DIR}/external/rapidgzip-download/CMakeLists.txt)
-  execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/rapidgzip-download )
-  if(result)
-    message(FATAL_ERROR "CMake step for rapidgzip failed: ${result}")
-  endif()
-  execute_process(COMMAND ${CMAKE_COMMAND} --build .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/rapidgzip-download )
-  if(result)
-    message(FATAL_ERROR "Build step for rapidgzip failed: ${result}")
-  endif()
+  ExternalProject_Add(rapidgzip
+    GIT_REPOSITORY		https://github.com/mxmlnkn/rapidgzip
+    GIT_TAG			rapidgzip-v0.10.1
+    GIT_SUBMODULES		""
+    GIT_SUBMODULES_RECURSE	0
+    PREFIX            "external"
+    SOURCE_DIR			"${CMAKE_CURRENT_BINARY_DIR}/external/rapidgzip"
+    BUILD_IN_SOURCE   		1
+    BUILD_COMMAND	    	""
+    CONFIGURE_COMMAND 		""
+    INSTALL_COMMAND   		""
+    )
+  add_dependencies(tigz rapidgzip)
   set(CMAKE_RAPIDGZIP_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/rapidgzip/src/core ${CMAKE_CURRENT_BINARY_DIR}/external/rapidgzip/src/rapidgzip)
 endif()
 include_directories(${CMAKE_RAPIDGZIP_HEADERS})
@@ -193,19 +175,17 @@ include_directories(${CMAKE_RAPIDGZIP_HEADERS})
 if (DEFINED CMAKE_BS_THREAD_POOL_HEADERS)
   message(STATUS "BS::thread_pool headers provided in: ${CMAKE_BS_THREAD_POOL_HEADERS}")
 else()
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config/CMakeLists-bs_thread_pool.txt.in ${CMAKE_BINARY_DIR}/external/bs_thread_pool-download/CMakeLists.txt)
-  execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/bs_thread_pool-download )
-  if(result)
-    message(FATAL_ERROR "CMake step for BS::thread_pool failed: ${result}")
-  endif()
-  execute_process(COMMAND ${CMAKE_COMMAND} --build .
-    RESULT_VARIABLE result
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/external/bs_thread_pool-download )
-  if(result)
-    message(FATAL_ERROR "Build step for BS::thread_pool failed: ${result}")
-  endif()
+  ExternalProject_Add(bs_thread_pool
+    GIT_REPOSITORY    https://github.com/bshoshany/thread-pool
+    GIT_TAG           v3.5.0
+    PREFIX            "external"
+    SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/external/bs_thread_pool"
+    BUILD_IN_SOURCE   1
+    BUILD_COMMAND     ""
+    CONFIGURE_COMMAND ""
+    INSTALL_COMMAND   ""
+    )
+  add_dependencies(tigz bs_thread_pool)
   set(CMAKE_BS_THREAD_POOL_HEADERS ${CMAKE_CURRENT_BINARY_DIR}/external/bs_thread_pool/include)
 endif()
 include_directories(${CMAKE_BS_THREAD_POOL_HEADERS})
